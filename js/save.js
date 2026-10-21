@@ -3,7 +3,7 @@
   'use strict';
   const PF = (window.PF = window.PF || {});
   const META_KEY = 'pfw_meta_v1';
-  const RUN_KEY = (two) => (two ? 'pfw_run_v1_double' : 'pfw_run_v1_single');
+  const RUN_KEY = (two, endless) => 'pfw_run_v1_' + (endless ? 'endless_' : '') + (two ? 'double' : 'single');
 
   const store = {
     get(k) {
@@ -37,6 +37,14 @@
     lastSkins: [0, 1],
     settings: { music: true, sfx: true },
     seenIntro: false,
+    seenMoveHint: false,
+    // 长线玩法（成就 / 天赋 / 外观 / 无尽模式）——由对应系统读写
+    crystals: 0, // 迷雾结晶
+    talents: {},
+    ach: {},
+    outfits: [null, null],
+    endlessBest: [0, 0],
+    runs: 0,
   });
 
   const Save = {
@@ -50,6 +58,9 @@
           this.meta = Object.assign(d, m);
           this.meta.stats = Object.assign(defMeta().stats, m.stats || {});
           this.meta.settings = Object.assign(defMeta().settings, m.settings || {});
+          for (const k of ['talents', 'ach']) if (!this.meta[k] || typeof this.meta[k] !== 'object') this.meta[k] = {};
+          if (!Array.isArray(this.meta.outfits)) this.meta.outfits = [null, null];
+          if (!Array.isArray(this.meta.endlessBest)) this.meta.endlessBest = [0, 0];
           if (!Array.isArray(this.meta.unlocked) || this.meta.unlocked.length < 8) this.meta.unlocked = d.unlocked;
         } catch (e) {
           this.meta = defMeta();
@@ -83,23 +94,46 @@
       });
       return out;
     },
-    hasRun(two) {
-      return !!store.get(RUN_KEY(two));
+    hasRun(two, endless) {
+      return !!this.loadRun(two, endless);
     },
-    loadRun(two) {
-      const raw = store.get(RUN_KEY(two));
+    /* 读取并校验单局存档；损坏的存档直接丢弃 */
+    loadRun(two, endless) {
+      const raw = store.get(RUN_KEY(two, endless));
       if (!raw) return null;
       try {
-        return JSON.parse(raw);
+        const sv = JSON.parse(raw);
+        const okSkin = (x) => Number.isInteger(x) && x >= 0 && x < PF.Data.ROLES.length;
+        const valid =
+          sv &&
+          sv.v === 1 &&
+          sv.st &&
+          Array.isArray(sv.st.res) &&
+          sv.world &&
+          Array.isArray(sv.world.tiles) &&
+          sv.world.tiles.length === PF.Data.N * PF.Data.N &&
+          Array.isArray(sv.world.nodes) &&
+          Array.isArray(sv.world.buildings) &&
+          Array.isArray(sv.players) &&
+          sv.players.length >= 1 &&
+          Array.isArray(sv.workers) &&
+          Array.isArray(sv.skins) &&
+          sv.skins.slice(0, sv.players.length).every(okSkin);
+        if (!valid) {
+          store.del(RUN_KEY(two, endless));
+          return null;
+        }
+        return sv;
       } catch (e) {
+        store.del(RUN_KEY(two, endless));
         return null;
       }
     },
-    saveRun(two, data) {
-      return store.set(RUN_KEY(two), JSON.stringify(data));
+    saveRun(two, data, endless) {
+      return store.set(RUN_KEY(two, endless), JSON.stringify(data));
     },
-    clearRun(two) {
-      store.del(RUN_KEY(two));
+    clearRun(two, endless) {
+      store.del(RUN_KEY(two, endless));
     },
     setBest(two, sec) {
       const i = two ? 1 : 0;

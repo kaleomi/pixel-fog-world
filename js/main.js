@@ -307,6 +307,12 @@
     const M = Save.meta;
     $('#best0').textContent = '最好成绩：' + (M.best[0] != null ? U.fmtTime(M.best[0], true) : '--:--:--');
     $('#best1').textContent = '最好成绩：' + (M.best[1] != null ? U.fmtTime(M.best[1], true) : '--:--:--');
+    const eb = M.endlessBest || [0, 0];
+    $('#bestE').textContent = '最佳：单人 ' + (eb[0] || 0) + ' 夜 · 双人 ' + (eb[1] || 0) + ' 夜';
+    $('#btnTalent').style.display = PF.Hooks.openTalents ? '' : 'none';
+    $('#btnAch').style.display = PF.Hooks.openAchievements ? '' : 'none';
+    $('#crystalNum').textContent = M.crystals || 0;
+    $('#crystalBox').style.display = PF.Hooks.openTalents ? '' : 'none';
     $('#btnMusic').textContent = '音乐：' + (M.settings.music ? '开' : '关');
     $('#btnSfx').textContent = '音效：' + (M.settings.sfx ? '开' : '关');
     document.querySelectorAll('.mart').forEach((c) => {
@@ -316,7 +322,20 @@
       x.drawImage(S.ground('meadow', 7), 16, 56, 100, 36);
       Art.put(x, S.building('camp'), 66, 76, 0.9);
       if (c.dataset.art === '1') Art.put(x, S.human(M.lastSkins[0] || 0, 'idle0'), 34, 92, 1.4);
-      else {
+      else if (c.dataset.art === 'e') {
+        Art.clear(x, c.width, c.height, '#1b2050');
+        Art.sea(x, c.width, 60, 36, 0);
+        x.globalAlpha = 0.6;
+        x.fillStyle = '#0c0e2c';
+        x.fillRect(0, 0, c.width, c.height);
+        x.globalAlpha = 1;
+        x.drawImage(S.ground('meadow', 7), 16, 56, 100, 36);
+        Art.put(x, S.building('camp'), 66, 76, 0.9);
+        Art.put(x, S.human(M.lastSkins[0] || 0, 'idle0'), 30, 92, 1.4);
+        Art.put(x, S.pirate(1, 'idle0'), 104, 92, 1.4, true);
+        x.fillStyle = '#ffe36b';
+        for (let i = 0; i < 14; i++) x.fillRect((i * 37) % c.width, (i * 13) % 40, 1, 1);
+      } else {
         Art.put(x, S.human(M.lastSkins[0] || 0, 'idle0'), 28, 92, 1.4);
         Art.put(x, S.human(M.lastSkins[1] != null ? M.lastSkins[1] : 1, 'idle0'), 104, 92, 1.4, true);
       }
@@ -359,7 +378,14 @@
     $('#roleDetail').innerHTML = `<div class="nm">${r.name}</div><div class="pk">${r.desc}</div>
       <div class="stt"><span>血量</span><b>${r.hp}</b><span>攻击</span><b>${r.atk}</b><span>速度</span><b>${r.speed}</b><span>回血</span><b>${r.regen}/秒</b></div>
       ${M.unlocked[App.sel] ? '' : `<div class="lockt">🔒 解锁条件：${r.unlock.text}<br>当前进度：${Math.min(r.unlock.n, Math.floor(M.stats[r.unlock.stat] || 0))}/${r.unlock.n}</div>`}
+      <div id="roleExtra"></div>
       <button class="btn ${ok ? 'green' : 'gray'}" id="roleOk">${ok ? (last ? '出发！' : '下一步：2P 选角') : M.unlocked[App.sel] ? '已被 1P 选择' : '尚未解锁'}</button>`;
+    if (PF.Hooks.renderRoleExtra)
+      try {
+        PF.Hooks.renderRoleExtra($('#roleExtra'), { pickStep: App.pickStep, sel: App.sel, twoP: App.twoP, rerender: renderRoles });
+      } catch (e) {
+        console.error(e);
+      }
     $('#roleOk').onclick = () => {
       if (!ok) return;
       A.play('click');
@@ -380,6 +406,10 @@
   /* ---------------- 剧情 ---------------- */
   const STORY = ['洪水淹没了我的家园……', '我被冲到一块木筏上，漂进了一片迷雾。', '听说，迷雾的尽头有一片新的大陆。', '收集资源、驱散迷雾，造一只木筏去找它！'];
   function startStory() {
+    if (Save.meta.seenIntro || App.endless) {
+      startGame(null);
+      return;
+    }
     App.story = { k: 0, t: 0 };
     show('story');
     $('#storyCap').textContent = STORY[0];
@@ -398,15 +428,29 @@
   }
 
   /* ---------------- 开局 / 返回菜单 ---------------- */
-  function chooseMode(two) {
+  function chooseEndless() {
+    UI.open(
+      `<div class="dh center"><span>无尽守夜</span><button class="x" data-act="close">✕</button></div>
+      <div class="info center">没有新大陆，只有一夜比一夜凶的敌人。<br>白天抓紧发展，看你能撑过几夜。</div>
+      <div class="btns col"><button class="btn green" data-act="one">单人守夜</button><button class="btn" data-act="two">双人守夜</button></div>`,
+      'w-sm',
+      (act) => {
+        if (act === 'close') return UI.close();
+        UI.close(true);
+        chooseMode(act === 'two', true);
+      }
+    );
+  }
+  function chooseMode(two, endless) {
     App.twoP = two;
+    App.endless = !!endless;
     PF.Input.twoP = two;
-    if (Save.hasRun(two)) {
-      const sv = Save.loadRun(two);
-      const day = sv && sv.st ? sv.st.day + 1 : 1;
+    const sv = Save.loadRun(two, endless);
+    if (sv) {
+      const day = sv.st ? sv.st.day + 1 : 1;
       UI.open(
-        `<div class="dh center"><span>继续探险？</span></div>
-        <div class="info center">发现${two ? '双人' : '单人'}模式未完成的探险（第 ${day} 天，已驱散 ${sv && sv.world ? sv.world.tiles.filter((t) => t[0]).length - 5 : 0} 块迷雾）。</div>
+        `<div class="dh center"><span>继续${endless ? '守夜' : '探险'}？</span></div>
+        <div class="info center">发现${two ? '双人' : '单人'}${endless ? '无尽守夜' : '模式'}未完成的进度（第 ${day} ${endless ? '夜' : '天'}，已驱散 ${sv.world.tiles.filter((t) => t[0]).length - 5} 块迷雾）。</div>
         <div class="btns col"><button class="btn green" data-act="cont">继续上次的探险</button><button class="btn" data-act="new">开始新的探险</button><button class="btn gray2" data-act="close">取消</button></div>`,
         'w-sm',
         (act) => {
@@ -422,7 +466,7 @@
               (a2) => {
                 UI.close(true);
                 if (a2 === 'yes') {
-                  Save.clearRun(two);
+                  Save.clearRun(two, endless);
                   openRoles();
                 }
               }
@@ -435,33 +479,52 @@
   function startGame(sv) {
     const two = App.twoP;
     const skins = sv ? sv.skins : [App.pick[0], two ? App.pick[1] : 1];
+    const endless = sv ? !!sv.endless : !!App.endless;
     show(null);
     UI.fade(() => {
-      const g = new PF.Game({ twoP: two, skins, save: sv });
+      const g = new PF.Game({ twoP: two, skins, save: sv, endless });
       App.game = g;
       UI.game = g;
       PF.Input.twoP = two;
       PF.Input.reset();
       UI.showHUD(true);
-      $('#deskHint').textContent = two ? '1P：WASD 移动 · F 交互　｜　2P：方向键 移动 · Enter 交互　｜　停下自动采集/战斗 · Esc 暂停' : 'WASD / 方向键 移动 · 停下来自动采集/战斗 · 空格 交互 · Esc 暂停';
+      $('#deskHint').textContent = two ? '1P：WASD 移动 · F 交互 · Q 技能　｜　2P：方向键 移动 · Enter 交互 · 右Shift 技能　｜　Esc 暂停' : 'WASD / 方向键 移动 · 停下来自动采集/战斗 · 空格 交互 · Q 技能 · Esc 暂停';
       A.music(g.isNight() ? 'night' : 'day');
       if (!sv) {
         App.introT = 2.4;
         g.cam.zoomMul = 0.45;
-        setTimeout(() => UI.toast('走到雾的边缘，点击气泡就能驱散迷雾'), 2600);
-        setTimeout(() => UI.toast('停在树旁边不动，会自动砍树'), 600);
+        if (!endless) {
+          g.later(() => UI.toast('停在树旁边不动，会自动砍树'), 600);
+          g.later(() => UI.toast('先攒 30 木材，去左边建木料场'), 3200);
+        }
         if (!Save.meta.seenIntro) {
           Save.meta.seenIntro = true;
           Save.saveMeta();
         }
+        showMoveHint();
       } else {
         UI.toast('欢迎回来！第 ' + (g.st.day + 1) + ' 天');
       }
       if (window.__pfDebug) window.__pfDebug(g);
     });
   }
+  /* 手机第一次进游戏：提示怎么移动 */
+  function showMoveHint() {
+    if (!U.isTouch() || Save.meta.seenMoveHint) return;
+    const el = $('#moveHint');
+    el.classList.add('on');
+    const off = () => {
+      el.classList.remove('on');
+      Save.meta.seenMoveHint = true;
+      Save.saveMeta();
+      $('#touch').removeEventListener('pointerdown', off);
+    };
+    $('#touch').addEventListener('pointerdown', off);
+  }
   function toMenu() {
     if (App.game && !App.game.over && App.game.st.won !== 'ended' && !App.game.mini) App.game.save();
+    if (App.game) App.game.destroy();
+    $('#moveHint').classList.remove('on');
     App.game = null;
     UI.game = null;
     UI.close(true);
@@ -500,7 +563,7 @@
           if (!UI.modal) UI.openPause();
           else {
             // Esc 关闭可关闭的弹窗
-            const b = UI.modal.el.querySelector('[data-act="resume"],[data-act="close"]');
+            const b = UI.modal.el.querySelector('[data-act="resume"],[data-act="close"],[data-act="ok"]');
             if (b) b.click();
           }
         }
@@ -588,6 +651,7 @@
     document.querySelectorAll('[data-mode]').forEach((b) =>
       b.addEventListener('click', () => {
         A.play('click');
+        if (b.dataset.mode === 'e') return chooseEndless();
         chooseMode(b.dataset.mode === '2');
       })
     );
@@ -597,6 +661,14 @@
       A.play('click');
       App.sel = +b.dataset.role;
       renderRoles();
+    });
+    $('#btnTalent').addEventListener('click', () => {
+      A.play('click');
+      if (PF.Hooks.openTalents) PF.Hooks.openTalents(() => refreshMode());
+    });
+    $('#btnAch').addEventListener('click', () => {
+      A.play('click');
+      if (PF.Hooks.openAchievements) PF.Hooks.openAchievements(() => refreshMode());
     });
     $('#btnMusic').addEventListener('click', () => {
       const M = Save.meta;
@@ -634,6 +706,7 @@
       p.classList.add('bump');
     });
     document.addEventListener('visibilitychange', () => {
+      A.duck(document.hidden || (App.game && App.game.paused));
       if (document.hidden && App.game) {
         if (!App.game.mini && !App.game.over) App.game.save();
         if (!UI.modal && !App.game.over && !App.game.cut) UI.openPause();

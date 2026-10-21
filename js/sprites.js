@@ -1022,29 +1022,39 @@
     const horiz = dir === 0 || dir === 1;
     const W = horiz ? L : D,
       H = horiz ? D : L;
-    const p = new PC(W, H);
+    const m = mk(W, H);
+    const img = m.x.createImageData(W, H);
+    const a = img.data;
     const rnd = U.rng(dir * 97 + 5);
-    // 离岸距离：海岸在靠近岛屿那一侧
-    const coastDist = (i, j) => {
-      const wob = Math.sin((horiz ? i : j) * 0.07) * 5 + Math.sin((horiz ? i : j) * 0.19) * 3;
-      if (dir === 0) return H - j - 14 + wob; // 大陆在上，海岸在下
-      if (dir === 1) return j - 14 + wob;
-      if (dir === 2) return W - i - 14 + wob;
-      return i - 14 + wob;
+    const C = {
+      sand: hex('#f0d796'),
+      sand2: hex('#d7b56c'),
+      wet: hex('#c9b07a'),
+      g1: hex('#6fbf4a'),
+      g2: hex('#66b444'),
+      gl: hex('#9ad96b'),
     };
+    // 离岸距离：海岸在靠近岛屿那一侧
     for (let j = 0; j < H; j++)
       for (let i = 0; i < W; i++) {
-        const d = coastDist(i, j);
+        const u = horiz ? i : j;
+        const wob = Math.sin(u * 0.07) * 5 + Math.sin(u * 0.19) * 3;
+        const d = dir === 0 ? H - j - 14 + wob : dir === 1 ? j - 14 + wob : dir === 2 ? W - i - 14 + wob : i - 14 + wob;
         if (d < 0) continue;
         const n = U.hash(i, j, 77);
         let col;
-        if (d < 10) col = n < 0.08 ? '#d7b56c' : '#f0d796';
-        else if (d < 12) col = '#c9b07a';
-        else col = (Math.floor(i / 11) + Math.floor(j / 11)) % 2 ? '#6fbf4a' : '#66b444';
-        if (d >= 12 && n > 0.985) col = '#9ad96b';
-        p.p(i, j, col);
+        if (d < 10) col = n < 0.08 ? C.sand2 : C.sand;
+        else if (d < 12) col = C.wet;
+        else col = (Math.floor(i / 11) + Math.floor(j / 11)) % 2 ? C.g1 : C.g2;
+        if (d >= 12 && n > 0.985) col = C.gl;
+        const k = (j * W + i) * 4;
+        a[k] = col[0];
+        a[k + 1] = col[1];
+        a[k + 2] = col[2];
+        a[k + 3] = 255;
       }
-    return { canvas: p.c, rnd };
+    m.x.putImageData(img, 0, 0);
+    return { canvas: m.c, rnd };
   }
 
   /* 角色帧缓存 */
@@ -1134,10 +1144,14 @@
     },
     spriteURL(canvas, scale) {
       const s = scale || 3;
+      const memoMap = (S._urlMemo = S._urlMemo || new WeakMap());
+      let per = memoMap.get(canvas);
+      if (!per) memoMap.set(canvas, (per = {}));
+      if (per[s]) return per[s];
       const m = mk(canvas.width * s, canvas.height * s);
       m.x.imageSmoothingEnabled = false;
       m.x.drawImage(canvas, 0, 0, m.w, m.h);
-      return m.c.toDataURL();
+      return (per[s] = m.c.toDataURL());
     },
     ground: drawGround,
     cliff(biome) {

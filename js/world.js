@@ -39,6 +39,8 @@
       this.groundCache = {};
       this.previewTile = -1;
       this.previewAmt = new Float32Array(N * N);
+      // 系统添加的障碍物：{x,y,r} 圆 或 {x0,x1,y0,y1} 矩形
+      this.solids = [];
       if (saved) this.load(saved);
       else this.generate();
       this.rebuildIndex();
@@ -306,6 +308,71 @@
         pushBox(ent, { x0: p.x - 80, x1: p.x - 48, y0: p.y - 40, y1: p.y }, r);
         pushBox(ent, { x0: p.x + 48, x1: p.x + 80, y0: p.y - 40, y1: p.y }, r);
       }
+      for (const o of this.solids) {
+        if (o.r != null) {
+          const dx = ent.x - o.x,
+            dy = ent.y - o.y;
+          const d = Math.hypot(dx, dy);
+          const min = o.r + r;
+          if (d < min && d > 0.001) {
+            ent.x = o.x + (dx / d) * min;
+            ent.y = o.y + (dy / d) * min;
+          }
+        } else if (Math.abs(ent.x - (o.x0 + o.x1) / 2) < 260 && Math.abs(ent.y - (o.y0 + o.y1) / 2) < 260) pushBox(ent, o, r);
+      }
+    }
+    /* 障碍物矩形（建筑、洞窟石柱、系统障碍），用于绕路 */
+    obstacleBoxes(ignore) {
+      const out = [];
+      for (const b of this.buildings) if (b !== ignore) out.push(this.footprint(b));
+      for (const p of this.portals) {
+        if (!this.tiles[p.tile].unlocked) continue;
+        out.push({ x0: p.x - 80, x1: p.x - 48, y0: p.y - 40, y1: p.y });
+        out.push({ x0: p.x + 48, x1: p.x + 80, y0: p.y - 40, y1: p.y });
+      }
+      for (const o of this.solids) out.push(o.r != null ? { x0: o.x - o.r, x1: o.x + o.r, y0: o.y - o.r, y1: o.y + o.r } : o);
+      return out;
+    }
+    /* 如果直线会撞上建筑，就改走它的一个角（让精灵、海盗不再卡在建筑后面） */
+    steer(x, y, tx, ty, r, ignore) {
+      const pad = r + 6;
+      let best = null,
+        bt = 2;
+      const minx = Math.min(x, tx) - pad,
+        maxx = Math.max(x, tx) + pad,
+        miny = Math.min(y, ty) - pad,
+        maxy = Math.max(y, ty) + pad;
+      for (const b0 of this.obstacleBoxes(ignore)) {
+        if (b0.x1 < minx || b0.x0 > maxx || b0.y1 < miny || b0.y0 > maxy) continue;
+        const b = { x0: b0.x0 - pad, x1: b0.x1 + pad, y0: b0.y0 - pad, y1: b0.y1 + pad };
+        if (x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1) continue; // 已经贴着了，交给推挤
+        const t = segBox(x, y, tx, ty, b);
+        if (t != null && t < bt) {
+          bt = t;
+          best = b;
+        }
+      }
+      if (!best) return [tx, ty];
+      const m = 16;
+      const corners = [
+        [best.x0 - m, best.y0 - m],
+        [best.x1 + m, best.y0 - m],
+        [best.x0 - m, best.y1 + m],
+        [best.x1 + m, best.y1 + m],
+      ];
+      const inner = { x0: best.x0 + 2, x1: best.x1 - 2, y0: best.y0 + 2, y1: best.y1 - 2 };
+      let bc = null,
+        bd = 1e12;
+      for (const c of corners) {
+        if (!this.walkable(c[0], c[1], r)) continue;
+        if (segBox(x, y, c[0], c[1], inner) != null) continue;
+        const d = Math.hypot(c[0] - x, c[1] - y) + Math.hypot(tx - c[0], ty - c[1]);
+        if (d < bd) {
+          bd = d;
+          bc = c;
+        }
+      }
+      return bc || [tx, ty];
     }
 
     /* ---------- 寻路（地块级 BFS） ---------- */
@@ -482,7 +549,20 @@
         this.mainTrees.sort((a, b) => a.y - b.y);
       }
       const R = this.mainlandRect();
-      ctx.drawImage(this.mainCanvas, R.x, R.y, R.w, R.h);
+      // 只画可见部分
+      const v = cam.view;
+      const vx0 = Math.max(R.x, v.x0 - 8),
+        vy0 = Math.max(R.y, v.y0 - 8),
+        vx1 = Math.min(R.x + R.w, v.x1 + 8),
+        vy1 = Math.min(R.y + R.h, v.y1 + 8);
+      if (vx1 > vx0 && vy1 > vy0) {
+        const k = this.mainCanvas.width / R.w;
+        const sx = Math.floor((vx0 - R.x) * k),
+          sy = Math.floor((vy0 - R.y) * k);
+        const sw = Math.ceil((vx1 - vx0) * k) + 1,
+          sh = Math.ceil((vy1 - vy0) * k) + 1;
+        ctx.drawImage(this.mainCanvas, sx, sy, sw, sh, R.x + sx / k, R.y + sy / k, sw / k, sh / k);
+      }
       for (const tr of this.mainTrees) {
         if (!cam.visible(tr.x, tr.y, 200)) continue;
         const img = S.tree(tr.big, tr.v, tr.s);
@@ -601,6 +681,31 @@
     }
   }
 
+  /* 线段与矩形相交：返回进入时刻 t∈[0,1]，否则 null（Liang–Barsky） */
+  function segBox(x0, y0, x1, y1, b) {
+    let t0 = 0,
+      t1 = 1;
+    const dx = x1 - x0,
+      dy = y1 - y0;
+    const p = [-dx, dx, -dy, dy];
+    const q = [x0 - b.x0, b.x1 - x0, y0 - b.y0, b.y1 - y0];
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) {
+        if (q[i] < 0) return null;
+      } else {
+        const t = q[i] / p[i];
+        if (p[i] < 0) {
+          if (t > t1) return null;
+          if (t > t0) t0 = t;
+        } else {
+          if (t < t0) return null;
+          if (t < t1) t1 = t;
+        }
+      }
+    }
+    return t0;
+  }
+
   function pushBox(ent, b, r) {
     const cx = U.clamp(ent.x, b.x0, b.x1);
     const cy = U.clamp(ent.y, b.y0, b.y1);
@@ -633,5 +738,7 @@
   World.DIRV = DIRV;
   World.CH = CH;
   World.FOOT = FOOT;
+  World.segBox = segBox;
+  World.pushBox = pushBox;
   PF.World = World;
 })();

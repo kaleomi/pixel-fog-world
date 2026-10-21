@@ -108,7 +108,7 @@
       this.face = 1;
       this.t = Math.random();
       this.moving = false;
-      this.hpMax = this.role.hp;
+      this.canBeTargeted = true;
       this.hp = this.hpMax;
       this.hurtCD = 0;
       this.flash = 0;
@@ -124,30 +124,38 @@
       this.lockMove = 0;
       this.carry = 0; // 小游戏用：手里的水果
     }
+    get hpMax() {
+      return this.role.hp + ((this.g.mods && this.g.mods.playerHpAdd) || 0);
+    }
     get speed() {
       const camp = this.g.world.camp();
       let s = D.CAMP.pspeed.vals[camp.lv[2]];
       if (this.role.perk === 'fast') s += 50;
       if (this.role.perk === 'mech') s *= 1.2;
-      return s;
+      return s * this.g.mods.playerSpeedMul * (this.speedMul || 1);
     }
     get atk() {
-      let a = this.role.atk + 2 * this.g.st.atkLv;
+      const m = this.g.mods;
+      let a = this.role.atk + 2 * this.g.st.atkLv + m.atkAdd;
       if (this.g.st.holySword) a *= 2;
-      return a;
+      return Math.round(a * m.atkMul);
     }
     hitPer(type) {
       const key = ['wood', 'rice', 'crystal'][type];
       const b = this.g.world.building(key);
       return D.INDUSTRY[key].hit.vals[b.lv[3]];
     }
-    hurt(dmg) {
+    hurt(dmg, src) {
       if (this.down || this.invuln > 0) return;
+      dmg = Math.round(dmg * (this.dmgTakenMul || 1));
+      if (dmg <= 0) return;
       this.hp -= dmg;
       this.hurtCD = 5;
       this.flash = 0.6;
       A.play('hurt');
+      if (navigator.vibrate && PF.Input.usedTouch) navigator.vibrate(30);
       this.g.fx.text(this.x, this.y - 120, '-' + dmg, '#ff5a4f');
+      this.g.fire('playerHurt', this, dmg, src);
       if (this.hp <= 0) {
         this.hp = 0;
         this.down = true;
@@ -188,7 +196,7 @@
         this.regenAcc += dt;
         if (this.regenAcc >= 1) {
           this.regenAcc -= 1;
-          this.hp = Math.min(this.hpMax, this.hp + this.role.regen);
+          this.hp = Math.min(this.hpMax, this.hp + this.role.regen + (g.mods.playerRegenAdd || 0));
         }
       }
       const mag = Math.hypot(mv.x, mv.y);
@@ -336,6 +344,7 @@
       if (blink) ctx.globalAlpha = 0.5;
       const img = S.human(this.skin, frame);
       drawSprite(ctx, img, this.x, this.y + 4, { flip: this.face < 0, flash: this.flash > 0 ? this.flash : 0 });
+      if (PF.Hooks.playerDecor) PF.Hooks.playerDecor(ctx, this, frame);
       // 工具
       if (this.actKind) {
         const tool = this.actKind === 'atk' ? (g.st.holySword ? 'holy' : 'sword') : this.actKind === 'repair' ? 'hammer' : TOOL_BY_TYPE[this.actTarget.type];
@@ -389,6 +398,8 @@
       this.flash = 0;
       this.face = 1;
       this.workT = 0;
+      this.canBeTargeted = true;
+      this.lastType = this.type >= 0 ? this.type : 0;
       this.wander = null;
       this.fightT = 0;
       this.enemy = null;
@@ -408,7 +419,7 @@
       let k = 0;
       if (this.g.st.speedUpT > 0) k += 0.5;
       if (this.sup) k += 0.5;
-      return s + base * k;
+      return (s + base * k) * this.g.mods.workerSpeedMul;
     }
     key() {
       return ['wood', 'rice', 'crystal'][this.type];
@@ -422,6 +433,7 @@
     }
     hurt(dmg) {
       if (this.dead) return;
+      dmg = Math.round(dmg);
       this.hp -= dmg;
       this.hurtCD = 5;
       this.flash = 0.6;
@@ -441,15 +453,45 @@
     }
     moveTo(tx, ty, dt, goalTile) {
       const w = this.g.world;
-      const [wx, wy] = w.nextWaypoint(this.x, this.y, goalTile, tx, ty);
-      const dx = wx - this.x,
+      let [wx, wy] = w.nextWaypoint(this.x, this.y, goalTile, tx, ty);
+      // 绕开建筑 / 洞窟
+      [wx, wy] = w.steer(this.x, this.y, wx, wy, this.r);
+      let dx = wx - this.x,
         dy = wy - this.y;
       const d = Math.hypot(dx, dy);
       if (d < 4) return true;
       const sp = Math.min(d, this.speed * dt);
       if (Math.abs(dx) > 2) this.face = dx > 0 ? 1 : -1;
-      moveEnt(this.g, this, (dx / d) * sp, (dy / d) * sp, this.r);
+      const ox = this.x,
+        oy = this.y;
+      if (this.sideT > 0) {
+        // 卡住时侧移一下
+        this.sideT -= dt;
+        moveEnt(this.g, this, (-dy / d) * sp * this.sideDir, (dx / d) * sp * this.sideDir, this.r);
+      } else moveEnt(this.g, this, (dx / d) * sp, (dy / d) * sp, this.r);
       this.moving = true;
+      // 卡住检测
+      const moved = Math.hypot(this.x - ox, this.y - oy);
+      if (moved < sp * 0.25) this.stuckT = (this.stuckT || 0) + dt;
+      else this.stuckT = Math.max(0, (this.stuckT || 0) - dt * 0.5);
+      if (this.stuckT > 0.6 && !(this.sideT > 0)) {
+        this.sideT = 0.5;
+        this.sideDir = Math.random() < 0.5 ? 1 : -1;
+      }
+      if (this.stuckT > 6) {
+        // 实在过不去：小精灵蹦到目标附近
+        this.stuckT = 0;
+        const nx = U.lerp(this.x, tx, 0.6),
+          ny = U.lerp(this.y, ty, 0.6);
+        if (w.walkable(nx, ny, this.r)) {
+          this.g.fx.burst(this.x, this.y - 30, '#b7f59a', 5);
+          this.x = nx;
+          this.y = ny;
+        } else if (this.target) {
+          this.target.reserved = null;
+          this.target = null;
+        }
+      }
       return false;
     }
     findTarget() {
@@ -573,7 +615,7 @@
             this.workT = 0;
             const key = this.key();
             const b = g.world.building(key);
-            const cap = D.INDUSTRY[key].carry.vals[b.lv[2]];
+            const cap = D.INDUSTRY[key].carry.vals[b.lv[2]] + (g.mods.workerCarryAdd || 0);
             const per = D.INDUSTRY[key].hit.vals[b.lv[3]];
             const amt = Math.min(per, n.hp, cap - this.carry);
             if (amt > 0) {
@@ -632,10 +674,13 @@
     constructor(g, kind, x, y, land) {
       this.g = g;
       this.kind = kind;
-      const K = D.PIRATE_KIND[kind];
+      // kind 可以是海盗编号 0-2，也可以直接传一个数值对象（系统自定义的敌人）
+      const K = typeof kind === 'object' ? kind : D.PIRATE_KIND[kind];
       this.K = K;
-      this.hp = this.hpMax = K.hp;
-      this.atk = K.atk;
+      if (typeof kind === 'object') this.kind = K.id || 'custom';
+      const m = g.mods || {};
+      this.hp = this.hpMax = Math.round(K.hp * (m.enemyHpMul || 1));
+      this.atk = Math.round(K.atk * (m.enemyAtkMul || 1));
       this.speed = K.speed;
       this.x = x;
       this.y = y;
@@ -653,10 +698,11 @@
     }
     hurt(dmg, src) {
       if (this.dead) return;
+      dmg = Math.round(dmg);
       this.hp -= dmg;
       this.flash = 0.7;
       this.g.fx.text(this.x, this.y - 130 * this.K.scale, '-' + dmg, '#ffe36b');
-      if (src && src.x !== undefined && this.state !== 'sail') {
+      if (src && src.canBeTargeted && this.state !== 'sail') {
         // 被打会转头还手
         this.target = src;
       }
@@ -684,6 +730,14 @@
         if (d < bd) {
           bd = d;
           best = w;
+        }
+      }
+      for (const a of g.allies) {
+        if (a.dead || !a.canBeTargeted) continue;
+        const d = U.dist(a.x, a.y, this.x, this.y);
+        if (d < bd) {
+          bd = d;
+          best = a;
         }
       }
       return best;
@@ -740,14 +794,15 @@
           this.atkT += dt;
           if (this.atkT >= this.K.atkCD) {
             this.atkT = 0;
-            if (this.target) this.target.hurt(this.atk);
+            if (this.target) this.target.hurt(this.atk, this);
             else g.hurtCamp(this.atk);
           }
         }
         return;
       }
       // 朝营地走
-      const [wx, wy] = g.world.nextWaypoint(this.x, this.y, camp.tile, camp.x, camp.y);
+      let [wx, wy] = g.world.nextWaypoint(this.x, this.y, camp.tile, camp.x, camp.y);
+      [wx, wy] = g.world.steer(this.x, this.y, wx, wy, this.r, camp);
       const dx = wx - this.x,
         dy = wy - this.y;
       const d = Math.hypot(dx, dy);
@@ -878,15 +933,49 @@
   }
 
   /* =================== 特效 =================== */
+  /* 飘字预渲染缓存（避免每帧 strokeText） */
+  const TEXT_CACHE = new Map();
+  function textImg(str, col, fs) {
+    const key = str + '|' + col + '|' + fs;
+    let c = TEXT_CACHE.get(key);
+    if (c) return c;
+    if (TEXT_CACHE.size > 300) TEXT_CACHE.clear();
+    const font = 'bold ' + fs + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+    const m = document.createElement('canvas').getContext('2d');
+    m.font = font;
+    const w = Math.ceil(m.measureText(str).width) + 12;
+    const h = fs + 14;
+    c = document.createElement('canvas');
+    c.width = w * 2;
+    c.height = h * 2;
+    const x = c.getContext('2d');
+    x.scale(2, 2);
+    x.font = font;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.lineWidth = 6;
+    x.lineJoin = 'round';
+    x.strokeStyle = '#1c1424';
+    x.strokeText(str, w / 2, h / 2);
+    x.fillStyle = col;
+    x.fillText(str, w / 2, h / 2);
+    c.lw = w;
+    c.lh = h;
+    TEXT_CACHE.set(key, c);
+    return c;
+  }
+
   class Fx {
     constructor() {
       this.texts = [];
       this.parts = [];
     }
     text(x, y, s, col, big) {
-      this.texts.push({ x, y, s, col: col || '#fff', t: 0, life: 1.1, big: !!big });
+      if (this.texts.length > 60) this.texts.shift();
+      this.texts.push({ x, y, s: String(s), col: col || '#fff', t: 0, life: 1.1, big: !!big });
     }
     icon(x, y, type, n) {
+      if (this.texts.length > 60) this.texts.shift();
       this.texts.push({ x, y, s: '+' + n, col: ['#ffd9a8', '#fff2a8', '#e6d4ff', '#ffe36b'][type], t: 0, life: 1.2, icon: type });
     }
     burst(x, y, col, n) {
@@ -911,18 +1000,22 @@
       }
     }
     update(dt) {
+      let k = 0;
       for (const t of this.texts) {
         t.t += dt;
         t.y -= dt * 70;
+        if (t.t < t.life) this.texts[k++] = t;
       }
-      this.texts = this.texts.filter((t) => t.t < t.life);
+      this.texts.length = k;
+      k = 0;
       for (const p of this.parts) {
         p.t += dt;
         p.vy += p.g * dt;
         p.x += p.vx * dt;
         p.y += p.vy * dt;
+        if (p.t < p.life) this.parts[k++] = p;
       }
-      this.parts = this.parts.filter((p) => p.t < p.life);
+      this.parts.length = k;
     }
     draw(ctx) {
       for (const p of this.parts) {
@@ -930,26 +1023,19 @@
         ctx.fillStyle = p.col;
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
       }
-      ctx.globalAlpha = 1;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.imageSmoothingEnabled = true;
       for (const t of this.texts) {
         const a = 1 - Math.max(0, (t.t - t.life * 0.6) / (t.life * 0.4));
         ctx.globalAlpha = a;
-        const fs = t.big ? 40 : 28;
-        ctx.font = 'bold ' + fs + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+        const img = textImg(t.s, t.col, t.big ? 40 : 28);
         let x = t.x;
         if (t.icon != null) {
-          const ic = S.icon(t.icon);
-          ctx.drawImage(ic, x - 44, t.y - 18, 36, 36);
+          ctx.drawImage(S.icon(t.icon), x - 44, t.y - 18, 36, 36);
           x += 16;
         }
-        ctx.lineWidth = 6;
-        ctx.strokeStyle = '#1c1424';
-        ctx.strokeText(t.s, x, t.y);
-        ctx.fillStyle = t.col;
-        ctx.fillText(t.s, x, t.y);
+        ctx.drawImage(img, x - img.lw / 2, t.y - img.lh / 2, img.lw, img.lh);
       }
+      ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = 1;
     }
   }
@@ -1052,5 +1138,5 @@
     }
   }
 
-  PF.Ent = { Player, Worker, Pirate, Ship, Fx, Gull, Fin, Crab, drawSprite, shadow, hpBar, bubble, drawTool, walkFrame, moveEnt, RES_NAME };
+  PF.Ent = { Player, Worker, Pirate, Ship, Fx, Gull, Fin, Crab, drawSprite, shadow, hpBar, bubble, drawTool, walkFrame, moveEnt, textImg, RES_NAME };
 })();

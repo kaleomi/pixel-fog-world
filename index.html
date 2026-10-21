@@ -17,8 +17,11 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&display=swap">
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&display=swap" onload="this.onload=null;this.rel='stylesheet'">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/combat.css">
+  <link rel="stylesheet" href="css/explore.css">
+  <link rel="stylesheet" href="css/meta.css">
 </head>
 <body>
   <div id="app">
@@ -52,7 +55,13 @@
       </div>
       <canvas id="minimap" width="120" height="120" title="点击放大/缩小"></canvas>
       <div id="deskHint"></div>
+      <!-- 玩法插件的界面挂点 -->
+      <div id="bossBar"></div>
+      <div id="weatherBox"></div>
+      <div id="rightCol"><button id="buildBtn" class="hudbtn"></button><button id="skillBtn1" class="hudbtn skill p2"></button><button id="skillBtn0" class="hudbtn skill"></button></div>
+      <div id="extHud"></div>
     </div>
+    <div id="moveHint"><div class="hand"></div><div class="txt">按住屏幕任意位置拖动来移动<br>停下来会自动采集 / 战斗</div></div>
 
     <div id="prompt0" class="prompt"></div>
     <div id="prompt1" class="prompt p2"></div>
@@ -84,8 +93,17 @@
             <div class="md">同一台设备，两人合作</div>
             <div class="best" id="best1">最好成绩：--:--:--</div>
           </button>
+          <button class="mode panel" data-mode="e">
+            <canvas class="mart" width="132" height="96" data-art="e"></canvas>
+            <div class="mt">无尽守夜</div>
+            <div class="md">敌人一夜比一夜强，能撑几夜？</div>
+            <div class="best" id="bestE">最佳：--</div>
+          </button>
         </div>
+        <div class="crystals" id="crystalBox"><span class="cg"></span>迷雾结晶 <b id="crystalNum">0</b></div>
         <div class="mrow">
+          <button class="btn sm green" id="btnTalent">天赋</button>
+          <button class="btn sm green" id="btnAch">成就</button>
           <button class="btn sm" data-go="endings">结局图鉴</button>
           <button class="btn sm" data-go="help">玩法说明</button>
           <button class="btn sm" id="btnMusic">音乐：开</button>
@@ -119,7 +137,6 @@
 
     <div id="dlg"></div>
     <div id="fade"></div>
-    <div id="rotateTip"></div>
   </div>
 
   <script src="js/util.js"></script>
@@ -133,6 +150,17 @@
   <script src="js/game.js"></script>
   <script src="js/minigames.js"></script>
   <script src="js/ui.js"></script>
+  <!-- 玩法插件（每个文件 PF.Sys.register 一个或多个系统） -->
+  <script src="js/sys/meta.js"></script>
+  <script src="js/sys/defense.js"></script>
+  <script src="js/sys/fogmon.js"></script>
+  <script src="js/sys/boss.js"></script>
+  <script src="js/sys/skills.js"></script>
+  <script src="js/sys/events.js"></script>
+  <script src="js/sys/landmarks.js"></script>
+  <script src="js/sys/fishing.js"></script>
+  <script src="js/sys/pets.js"></script>
+  <script src="js/sys/endless.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

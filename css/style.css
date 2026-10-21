@@ -154,9 +154,37 @@ body.touch #deskHint { display: none; }
   font-weight: 900; font-size: 20px; box-shadow: inset 0 -7px 0 var(--yellow2), inset 0 4px 0 rgba(255,255,255,.6), 0 5px 0 var(--ink);
 }
 #actBtn.on { display: block; }
-#actBtn:active { transform: translateY(3px); }
+#actBtn:active, #actBtn.press { transform: translateY(3px); box-shadow: inset 0 -4px 0 var(--yellow2), 0 2px 0 var(--ink); }
+.prompt .lk { margin-top: 2px; font-size: 12px; font-weight: 900; color: #c0302a; }
+.prompt .lk.ok { color: #2f7a3a; }
 
-#toasts { position: absolute; left: 50%; top: calc(160px + var(--st)); transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; width: max-content; max-width: 92vw; }
+/* 插件挂点 */
+#extHud { position: absolute; inset: 0; pointer-events: none; }
+#rightCol { position: absolute; right: calc(20px + var(--sr)); bottom: calc(128px + var(--sb)); display: flex; flex-direction: column-reverse; align-items: center; gap: 12px; pointer-events: none; }
+.hudbtn {
+  display: none; pointer-events: auto; position: relative; width: 64px; height: 64px; border-radius: 50%;
+  border: 4px solid var(--ink); background: var(--paper); color: var(--ink); font-weight: 900; font-size: 13px;
+  box-shadow: inset 0 -5px 0 var(--paper2), 0 4px 0 var(--ink); align-items: center; justify-content: center; flex-direction: column; line-height: 1.1;
+}
+.hudbtn.on { display: flex; }
+.hudbtn:active { transform: translateY(3px); }
+#skillBtn1 { position: fixed; left: calc(20px + var(--sl)); bottom: calc(128px + var(--sb)); }
+#bossBar { position: absolute; left: 50%; top: calc(64px + var(--st)); transform: translateX(-50%); display: none; width: min(420px, 70vw); pointer-events: none; }
+#bossBar.on { display: block; }
+#weatherBox { position: absolute; right: calc(120px + var(--sr)); top: calc(10px + var(--st)); display: none; pointer-events: auto; }
+#weatherBox.on { display: flex; }
+#moveHint { position: absolute; left: 50%; bottom: calc(60px + var(--sb)); transform: translateX(-50%); z-index: 5; display: none; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+#moveHint.on { display: flex; }
+#moveHint .hand { width: 56px; height: 56px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,.35); animation: handmove 1.6s ease-in-out infinite; }
+#moveHint .txt { background: rgba(28,20,36,.85); color: #fff; font-weight: 900; font-size: 15px; text-align: center; padding: 8px 14px; border-radius: 8px; border: 2px solid var(--yellow); line-height: 1.5; }
+@keyframes handmove { 0%, 100% { transform: translate(-40px, 0); } 50% { transform: translate(40px, -20px); } }
+.crystals { display: flex; align-items: center; gap: 6px; font-weight: 900; font-size: 15px; background: rgba(28,20,36,.75); border: 2px solid #b17cff; border-radius: 8px; padding: 4px 12px; text-shadow: 0 1px 0 var(--ink); }
+.crystals b { color: #e6d4ff; font-size: 18px; }
+.crystals .cg { width: 14px; height: 18px; background: linear-gradient(135deg, #e6d4ff, #8a55e0); clip-path: polygon(50% 0, 100% 35%, 80% 100%, 20% 100%, 0 35%); }
+.tabs.many { flex-wrap: wrap; }
+.tabs.many .tab { flex: 1 0 22%; font-size: 13px; padding: 6px 2px 8px; }
+
+#toasts { position: absolute; left: 50%; top: calc(160px + var(--st)); transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; width: max-content; max-width: 92vw; }
 .toast { background: rgba(28,20,36,.92); color: #fff; border: 2px solid var(--yellow); border-radius: 8px; padding: 7px 14px; font-weight: 700; font-size: 14px; text-align: center; animation: toastin .2s; transition: opacity .5s, transform .5s; }
 .toast.out { opacity: 0; transform: translateY(-10px); }
 @keyframes toastin { from { opacity: 0; transform: translateY(10px); } }
@@ -185,8 +213,8 @@ body.touch #deskHint { display: none; }
 .foot { position: absolute; bottom: calc(14px + var(--sb)); font-size: 12px; color: rgba(255,255,255,.85); text-shadow: 0 1px 0 var(--ink); text-align: center; padding: 0 12px; }
 .stitle { font-family: var(--display); font-size: clamp(32px, 7vw, 48px); color: #fff; letter-spacing: 4px; text-shadow: 0 4px 0 var(--ink), 4px 0 0 var(--ink), -4px 0 0 var(--ink), 0 -4px 0 var(--ink); }
 .back { position: absolute; left: calc(12px + var(--sl)); top: calc(12px + var(--st)); background: rgba(28,20,36,.75); color: #fff; border: 2px solid #000; border-radius: 8px; padding: 6px 14px; font-weight: 900; font-size: 15px; }
-.modes { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
-.mode { width: 240px; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform .1s; }
+.modes { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; max-width: 900px; }
+.mode { width: 230px; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform .1s; }
 .mode:active { transform: translateY(3px); }
 .mode .mart { width: 132px; height: 96px; image-rendering: pixelated; }
 .mode .mt { font-family: var(--display); font-size: 28px; color: var(--ink); letter-spacing: 2px; }
@@ -286,8 +314,9 @@ body.touch #deskHint { display: none; }
 
 /* ---------------- 适配 ---------------- */
 @media (max-width: 560px) {
-  .pill { min-width: 62px; font-size: 15px; padding-right: 7px; }
-  .pill img { width: 22px; height: 22px; }
+  .pill { min-width: 0; font-size: 14px; padding-right: 6px; gap: 2px; }
+  .pill img { width: 20px; height: 20px; }
+  .res { flex-wrap: nowrap; }
   .res { gap: 4px; max-width: calc(100vw - 120px); }
   #task { font-size: 13px; max-width: 100%; }
   #minimap { width: 84px; height: 84px; top: calc(128px + var(--st)); }
@@ -303,6 +332,15 @@ body.touch #deskHint { display: none; }
   .stat.wide { grid-column: auto; }
 }
 @media (max-height: 500px) {
+  /* 横屏手机：HUD 更紧凑，提示挪到底部，不挡人物 */
+  .row2 { padding-top: 4px; gap: 4px 8px; }
+  #task { font-size: 12px; padding: 2px 8px 2px 4px; }
+  .camp { font-size: 11px; padding: 2px 6px; }
+  #alerts { flex-direction: row; margin-top: 4px; }
+  #toasts { top: auto; bottom: calc(14px + var(--sb)); }
+  #rightCol { bottom: calc(112px + var(--sb)); }
+  .hudbtn { width: 56px; height: 56px; }
+  #actBtn { width: 76px; height: 76px; font-size: 18px; }
   .scr { gap: 10px; }
   .logo .l1 { font-size: 54px; }
   .modes { gap: 12px; }

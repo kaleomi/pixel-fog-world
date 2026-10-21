@@ -1,4 +1,5 @@
-/* 主玩法：资源、建筑、升级、昼夜、海盗来袭、任务、存档、渲染与夜间光照 */
+/* 主玩法：资源、建筑、升级、昼夜、海盗来袭、任务、存档、渲染与夜间光照
+   新玩法以“系统”插件接入（PF.Sys），接口说明见 docs/PLUGIN_API.md */
 (function () {
   'use strict';
   const PF = (window.PF = window.PF || {});
@@ -10,8 +11,59 @@
   const T = D.TILE,
     N = D.N,
     PX = D.PX;
-  const CYCLE = D.DAY_LEN + D.NIGHT_LEN; // 220
   const SAVE_VER = 1;
+  // 目标显示顺序：先建木料场、召唤精灵，再驱散迷雾
+  const TASK_ORDER = [2, 1, 0, 3, 4, 5, 6, 7];
+  const DIR_NAME = ['北', '南', '西', '东'];
+
+  const defaultMods = () => ({
+    playerSpeedMul: 1,
+    playerHpAdd: 0,
+    playerRegenAdd: 0,
+    atkAdd: 0,
+    atkMul: 1,
+    workerSpeedMul: 1,
+    workerCarryAdd: 0,
+    campHpAdd: 0,
+    tileCostMul: 1,
+    gatherBonus: 0, // 每次采集额外 +1 的几率
+    darknessMul: 1,
+    regrowMul: 1,
+    prodMul: 1,
+    goldMul: 1,
+    enemyHpMul: 1,
+    enemyAtkMul: 1,
+    enemyCountMul: 1,
+    extraFreeRevives: 0,
+  });
+
+  const defaultSt = () => ({
+    res: [10, 0, 0, 15],
+    items: {}, // 系统用的道具（鱼、宠物粮……）
+    day: 0,
+    cycleT: 0,
+    elapsed: 0,
+    campHp: D.CAMP.hp.vals[0],
+    atkLv: 0,
+    holySword: false,
+    superMan: false,
+    speedUpT: 0,
+    tasks: [false, false, false, false, false, false, false, false],
+    kills: 0,
+    hired: 0,
+    gathered: [
+      [0, 0, 0],
+      [0, 0, 0],
+    ],
+    worlds: {},
+    revives: 0,
+    freeRevives: 1,
+    letterIdx: 0,
+    letterUnread: false,
+    won: false,
+    countdown: -1,
+    raidDay: -1, // 最近一次已出发的海盗夜
+  });
 
   /* =================== 镜头 =================== */
   class Camera {
@@ -82,10 +134,12 @@
   class Game {
     constructor(opts) {
       this.twoP = !!opts.twoP;
+      this.endless = !!opts.endless;
       this.skins = opts.skins.slice();
       this.cam = new Camera();
       this.fx = new E.Fx();
-      this.pirates = [];
+      this.pirates = []; // 所有敌人（海盗、雾怪、首领……）
+      this.allies = []; // 系统加入的友方单位（宠物、可被攻击的塔……）
       this.ships = [];
       this.gulls = [];
       this.time = 0;
@@ -97,10 +151,33 @@
       this.gullT = 4;
       this.prompts = [null, null];
       this.over = false;
+      this.dead = false;
+      this.timers = [];
+      this.dayLen = D.DAY_LEN;
+      this.nightLen = D.NIGHT_LEN;
+      this.mods = defaultMods();
+      this.sys = {};
       this.timeScale = Number(U.qs.get('fast')) || 1;
+      this.debug = !!(U.qs.get('rich') || U.qs.get('fast'));
       const sv = opts.save;
-      if (sv && sv.v === SAVE_VER) this.load(sv);
+      const fresh = !(sv && sv.v === SAVE_VER);
+      if (!fresh) this.load(sv);
       else this.fresh();
+      // 初始化各玩法系统
+      for (const s of PF.Sys.list) {
+        if (!s.init) continue;
+        try {
+          s.init(this, fresh ? undefined : sv.sys && sv.sys[s.id], fresh);
+        } catch (e) {
+          console.error('[sys init]', s.id, e);
+        }
+      }
+      this.recomputeMods();
+      if (fresh) {
+        this.st.freeRevives = 1 + this.mods.extraFreeRevives;
+        this.st.campHp = this.campHpMax();
+        for (const p of this.players) p.hp = p.hpMax;
+      }
       this.cam.follow(this.players, 0, true);
       this.initAmbient();
       this.lightCv = document.createElement('canvas');
@@ -109,32 +186,8 @@
     fresh() {
       const seed = (Math.random() * 1e9) | 0;
       this.world = new PF.World(seed);
-      this.st = {
-        res: [10, 0, 0, 15],
-        day: 0,
-        cycleT: 0,
-        elapsed: 0,
-        campHp: D.CAMP.hp.vals[0],
-        atkLv: 0,
-        holySword: false,
-        superMan: false,
-        speedUpT: 0,
-        tasks: [false, false, false, false, false, false, false, false],
-        kills: 0,
-        hired: 0,
-        gathered: [
-          [0, 0, 0],
-          [0, 0, 0],
-        ],
-        worlds: {},
-        revives: 0,
-        freeRevive: true,
-        letterIdx: 0,
-        letterUnread: false,
-        won: false,
-        lettersRead: 0,
-        countdown: -1,
-      };
+      this.st = defaultSt();
+      this.st.endless = this.endless;
       if (U.qs.get('rich')) this.st.res = [5000, 5000, 5000, 5000];
       const camp = this.world.camp();
       this.players = [];
@@ -156,49 +209,146 @@
       const beach = w.tiles.filter((t) => t.biome === 'sand' || (t.d >= 2 && U.hash(t.i, 3, w.seed) < 0.2));
       for (const t of beach.slice(0, 10)) this.crabs.push(new E.Crab(this, t.i));
     }
+    /* 汇总各系统的数值修正 */
+    recomputeMods() {
+      const m = defaultMods();
+      for (const s of PF.Sys.list)
+        if (s.mods)
+          try {
+            s.mods(this, m);
+          } catch (e) {
+            console.error('[sys mods]', s.id, e);
+          }
+      this.mods = m;
+    }
+    /* 调用所有系统的同名钩子 */
+    fire(name, a, b, c, d) {
+      const l = PF.Sys.list;
+      for (let i = 0; i < l.length; i++) {
+        const f = l[i][name];
+        if (f)
+          try {
+            f.call(l[i], this, a, b, c, d);
+          } catch (e) {
+            console.error('[sys ' + name + ']', l[i].id, e);
+          }
+      }
+    }
+    /* 收集各系统钩子的返回值（非空） */
+    collect(name, a, b, c) {
+      const out = [];
+      for (const s of PF.Sys.list) {
+        const f = s[name];
+        if (!f) continue;
+        try {
+          const r = f.call(s, this, a, b, c);
+          if (r != null) Array.isArray(r) ? out.push(...r) : out.push(r);
+        } catch (e) {
+          console.error('[sys ' + name + ']', s.id, e);
+        }
+      }
+      return out;
+    }
+    later(fn, ms) {
+      const id = setTimeout(() => {
+        if (!this.dead) fn();
+      }, ms);
+      this.timers.push(id);
+    }
+    destroy() {
+      this.dead = true;
+      for (const id of this.timers) clearTimeout(id);
+      this.timers = [];
+      this.fire('destroy');
+    }
 
     /* ---------- 存档 ---------- */
     serialize() {
+      const sys = {};
+      for (const s of PF.Sys.list)
+        if (s.serialize)
+          try {
+            sys[s.id] = s.serialize(this);
+          } catch (e) {
+            console.error('[sys serialize]', s.id, e);
+          }
+      // 还在船上 / 涉水的海盗：存成已登陆
+      const pir = [];
+      for (const p of this.pirates) {
+        if (p.dead || p.noSave) continue;
+        const onLand = p.state !== 'sail';
+        pir.push({ kind: p.kind, x: Math.round(onLand ? p.x : p.land.x), y: Math.round(onLand ? p.y : p.land.y), hp: p.hp });
+      }
+      for (const s of this.ships) if (s.queue && s.queue.length && !s.noSave) for (const k of s.queue) pir.push({ kind: k, x: Math.round(s.land.x + U.rand(-50, 50)), y: Math.round(s.land.y), hp: D.PIRATE_KIND[k].hp * this.mods.enemyHpMul });
       return {
         v: SAVE_VER,
         twoP: this.twoP,
+        endless: this.endless,
         skins: this.skins,
         st: this.st,
         world: this.world.serialize(),
         players: this.players.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y), hp: p.hp, down: p.down })),
-        workers: this.workers.map((w) => ({ type: w.type, x: Math.round(w.x), y: Math.round(w.y), hp: w.hp, carry: w.carry })),
-        pirates: this.pirates.filter((p) => !p.dead && p.state !== 'sail').map((p) => ({ kind: p.kind, x: Math.round(p.x), y: Math.round(p.y), hp: p.hp })),
+        workers: this.workers.filter((w) => !w.dead).map((w) => ({ type: w.type, lastType: w.lastType, x: Math.round(w.x), y: Math.round(w.y), hp: w.hp, carry: w.carry })),
+        pirates: pir,
+        sys,
       };
     }
     load(sv) {
       this.world = new PF.World(sv.world.seed, sv.world);
-      this.st = sv.st;
+      const st = Object.assign(defaultSt(), sv.st);
+      if (typeof sv.st.freeRevive === 'boolean' && sv.st.freeRevives == null) st.freeRevives = sv.st.freeRevive ? 1 : 0;
+      this.st = st;
+      this.endless = !!(sv.endless || st.endless);
+      const camp = this.world.camp();
       this.players = sv.players.map((d, i) => {
         const p = new E.Player(this, i, this.skins[i]);
         p.x = d.x;
         p.y = d.y;
+        // 存在海上 / 大陆上的旧存档：放回营地旁边
+        if (!this.world.walkable(p.x, p.y, p.r)) {
+          p.x = camp.x + (i ? 60 : -60);
+          p.y = camp.y + 110;
+        }
         p.hp = Math.max(1, d.hp);
+        if (d.down && this.twoP) {
+          p.hp = 0;
+          p.down = true;
+        }
         return p;
       });
+      if (this.players.every((p) => p.down)) this.players.forEach((p) => p.revive(0.5));
       this.workers = sv.workers.map((d) => {
         const w = new E.Worker(this, d.type);
         w.x = d.x;
         w.y = d.y;
+        if (!this.world.walkable(w.x, w.y, w.r)) {
+          w.x = camp.x;
+          w.y = camp.y + 60;
+        }
         w.hp = d.hp;
         w.carry = d.carry || 0;
+        w.lastType = d.lastType != null ? d.lastType : d.type >= 0 ? d.type : 0;
         if (w.carry > 0) w.state = 'back';
         return w;
       });
-      this.pirates = (sv.pirates || []).map((d) => {
-        const p = new E.Pirate(this, d.kind, d.x, d.y, { x: d.x, y: d.y });
-        p.state = 'walk';
-        p.hp = d.hp;
-        return p;
-      });
+      this.pirates = (sv.pirates || [])
+        .filter((d) => D.PIRATE_KIND[d.kind])
+        .map((d) => {
+          const p = new E.Pirate(this, d.kind, d.x, d.y, { x: d.x, y: d.y });
+          p.state = 'walk';
+          p.hp = d.hp;
+          if (!this.world.walkable(p.x, p.y, p.r)) {
+            const t = this.world.outerTiles(0)[0] || this.world.tiles[PF.World.CENTER];
+            p.x = t.c * T + T / 2;
+            p.y = t.r * T + 60;
+          }
+          return p;
+        });
     }
     save() {
-      if (this.over || this.st.won === 'ended') return;
-      PF.Save.saveRun(this.twoP, this.serialize());
+      if (this.over || this.st.won === 'ended' || this.cut || this.mini || this.dead) return;
+      PF.Save.saveRun(this.twoP, this.serialize(), this.endless);
+      PF.Save.saveMeta();
     }
 
     /* ---------- 经济 ---------- */
@@ -206,6 +356,13 @@
       if (!cost) return true;
       for (let i = 0; i < 4; i++) if (cost[i] > this.st.res[i]) return false;
       return true;
+    }
+    lack(cost) {
+      // 还差多少：[[资源下标, 数量], ...]
+      const out = [];
+      if (!cost) return out;
+      for (let i = 0; i < 4; i++) if (cost[i] > this.st.res[i]) out.push([i, cost[i] - this.st.res[i]]);
+      return out;
     }
     pay(cost) {
       if (!this.canAfford(cost)) return false;
@@ -215,23 +372,31 @@
     }
     addRes(i, n, x, y) {
       if (!n) return;
-      this.st.res[i] += n;
+      this.st.res[i] = Math.max(0, this.st.res[i] + n);
       if (x != null) this.fx.icon(x, y, i, n);
       U.bus.emit('res', i);
+    }
+    item(k) {
+      return this.st.items[k] || 0;
+    }
+    addItem(k, n) {
+      this.st.items[k] = Math.max(0, (this.st.items[k] || 0) + n);
+      U.bus.emit('res');
     }
     harvest(node, amt, player) {
       node.hp -= amt;
       node.shake = 0.18;
+      const key = ['wood', 'rice', 'crystal'][node.type];
+      let got = amt;
+      if (player && this.mods.gatherBonus > 0 && Math.random() < this.mods.gatherBonus) got += 1;
       if (player) {
-        this.addRes(node.type, amt, player.x, player.y - 140);
-        this.st.gathered[player.idx][node.type] += amt;
-        PF.Save.addStat(['wood', 'rice', 'crystal'][node.type], amt);
-      } else {
-        PF.Save.addStat(['wood', 'rice', 'crystal'][node.type], amt);
+        this.addRes(node.type, got, player.x, player.y - 140);
+        this.st.gathered[player.idx][node.type] += got;
       }
+      PF.Save.addStat(key, got);
+      this.fire('harvest', node, got, player);
       if (node.hp <= 0) {
         node.hp = 0;
-        const key = ['wood', 'rice', 'crystal'][node.type];
         const b = this.world.building(key);
         const grow = D.INDUSTRY[key].grow.vals[b.lv[1]];
         node.regrow = this.st.elapsed < 120 ? 30 : grow;
@@ -245,13 +410,15 @@
       return (n.big ? D.NODE_HP.big : D.NODE_HP.small) + D.INDUSTRY[key].hpAdd.vals[b.lv[0]];
     }
     campHpMax() {
-      return D.CAMP.hp.vals[this.world.camp().lv[3]];
+      return D.CAMP.hp.vals[this.world.camp().lv[3]] + this.mods.campHpAdd;
     }
     workerCap() {
       return D.CAMP.cap.vals[this.world.camp().lv[0]];
     }
     tileCost(t) {
-      return D.TILE_COST[Math.min(8, Math.max(2, t.d))];
+      const c = D.TILE_COST[Math.min(8, Math.max(2, t.d))];
+      const m = this.mods.tileCostMul;
+      return m === 1 ? c : c.map((v) => Math.round(v * m));
     }
 
     /* ---------- 动作（UI 调用） ---------- */
@@ -272,11 +439,12 @@
       this.fx.sparkle(t.c * T + T / 2, t.r * T + T / 2, '#ffffff');
       this.fx.text(t.c * T + T / 2, t.r * T + T / 2, '迷雾散去！', '#fff4b0', true);
       this.checkTasks();
-      if (!wasRevealed && w.revealed) {
+      if (!wasRevealed && w.revealed && !this.endless) {
         this.placeDock(t);
-        setTimeout(() => this.toast('雾的尽头出现了一片大陆！在岸边造木筏就能过去'), 600);
+        this.later(() => this.toast('雾的尽头出现了一片大陆！在岸边造木筏就能过去'), 600);
         A.play('success');
       }
+      this.fire('unlock', t);
       this.save();
       return true;
     }
@@ -292,7 +460,11 @@
       ][d];
       this.world.dock = { tile: t.i, x: pos[0], y: pos[1], built: false, dir: d };
       // 清掉挡路的资源点
-      for (const n of this.world.nodesByTile[t.i]) if (U.dist(n.x, n.y, pos[0], pos[1]) < 80) n.hp = 0, (n.regrow = 99999);
+      for (const n of this.world.nodesByTile[t.i])
+        if (U.dist(n.x, n.y, pos[0], pos[1]) < 80) {
+          n.hp = 0;
+          n.regrow = 99999;
+        }
     }
     build(kind) {
       const w = this.world;
@@ -311,6 +483,7 @@
       this.fx.text(b.x, b.y - 180, def.name + '建好了！', '#fff4b0', true);
       this.toast({ wood: '木料场建成：每 2 秒自动产出 1 木材', rice: '粮仓建成：每 3 秒自动产出 1 水稻', crystal: '晶矿场建成：每 5 秒自动产出 1 紫水晶', shop: '集市开张：可以升级武器、兑换资源' }[kind]);
       this.checkTasks();
+      this.fire('build', kind);
       this.save();
       return true;
     }
@@ -326,6 +499,7 @@
       A.play('build');
       this.fx.sparkle(dk.x, dk.y, '#ffe36b');
       this.toast('木筏造好了！走到木筏旁边就可以启航');
+      this.fire('build', 'dock');
       this.save();
     }
     upgradeCamp(k) {
@@ -342,6 +516,7 @@
       camp.lv[k]++;
       if (k === 3) this.st.campHp += tbl.vals[lv + 1] - tbl.vals[lv];
       A.play('success');
+      this.fire('upgrade', 'camp', k);
       this.save();
       return true;
     }
@@ -367,18 +542,19 @@
           }
       }
       A.play('success');
+      this.fire('upgrade', key, k);
       this.save();
       return true;
     }
     hire() {
       if (this.workers.length >= this.workerCap()) {
-        this.toast('精灵数量已达上限，去营地升级“精灵上限”');
+        this.toast('精灵数量已达上限，先在“升级营地”里提升精灵上限');
         A.play('wrong');
         return false;
       }
       const cost = [0, 0, 0, D.hireCost(this.workers.length)];
       if (!this.pay(cost)) {
-        this.toast('金币不足');
+        this.toast('金币不足：夜里击退海盗、打开宝箱都能拿金币');
         A.play('wrong');
         return false;
       }
@@ -387,6 +563,7 @@
       this.st.hired++;
       this.fx.sparkle(w.x, w.y - 40, '#9be38a');
       A.play('pop');
+      this.fire('hire', w);
       this.save();
       return true;
     }
@@ -397,7 +574,7 @@
           this.toast('这项工作人数已满');
           return false;
         }
-        const idle = this.workers.find((w) => w.type < 0);
+        const idle = this.workers.find((w) => w.type < 0 && !w.dead);
         if (!idle) {
           this.toast(this.workers.length < this.workerCap() ? '没有空闲的精灵，先召唤一只吧' : '没有空闲的精灵');
           return false;
@@ -415,7 +592,6 @@
     }
     shopBuy(i) {
       const st = this.st;
-      const c = (w, r, k, g) => [w || 0, r || 0, k || 0, g || 0];
       const items = this.shopItems();
       const it = items[i];
       if (it.max) {
@@ -434,7 +610,6 @@
         case 3: this.addRes(2, 50); break;
         case 4: this.addRes(3, 20); break;
       }
-      void c;
       A.play('coin');
       this.save();
       return true;
@@ -457,12 +632,12 @@
         if (!this.pay(cost)) return false;
         st.revives++;
       } else {
-        if (!st.freeRevive) return false;
-        st.freeRevive = false;
+        if (!(st.freeRevives > 0)) return false;
+        st.freeRevives--;
       }
       for (const p of this.players) p.revive(1);
-      if (st.campHp <= 0) st.campHp = this.campHpMax();
-      // 震退附近海盗
+      st.campHp = this.campHpMax();
+      // 震退附近敌人
       for (const pr of this.pirates) {
         for (const p of this.players) {
           const d = U.dist(pr.x, pr.y, p.x, p.y);
@@ -479,6 +654,7 @@
       this.fx.sparkle(this.players[0].x, this.players[0].y - 60, '#9be38a');
       A.play('heal');
       this.over = false;
+      this.fire('revive');
       return true;
     }
 
@@ -487,27 +663,29 @@
       U.bus.emit('toast', msg);
     }
     hurtCamp(dmg) {
-      if (this.st.campHp <= 0) return;
+      if (this.st.campHp <= 0 || this.over) return;
       this.st.campHp -= dmg;
       const c = this.world.camp();
       c.flash = 0.4;
-      this.fx.text(c.x + U.rand(-40, 40), c.y - 170, '-' + dmg, '#ff5a4f');
+      this.fx.text(c.x + U.rand(-40, 40), c.y - 170, '-' + Math.round(dmg), '#ff5a4f');
       if (this.toastCD <= 0) {
         this.toastCD = 6;
         U.bus.emit('campAttacked');
         A.play('alarm');
       }
+      this.fire('campHurt', dmg);
       if (this.st.campHp <= 0) {
         this.st.campHp = 0;
         this.gameOver('camp');
       }
     }
     onPlayerDown(p) {
+      this.fire('playerDown', p);
       if (!this.twoP || this.players.every((q) => q.down)) this.gameOver('player');
     }
     onWorkerDie(w) {
-      this.toast('一只小精灵被海盗打倒了……');
-      setTimeout(() => {
+      this.toast('一只小精灵被打倒了……');
+      this.later(() => {
         const i = this.workers.indexOf(w);
         if (i >= 0) this.workers.splice(i, 1);
       }, 900);
@@ -515,14 +693,19 @@
     onPirateDie(p, src) {
       this.st.kills++;
       PF.Save.addStat('kills', 1);
-      this.addRes(3, p.K.gold, p.x, p.y - 150);
-      A.play('coin');
+      const gold = Math.round((p.K.gold || 0) * this.mods.goldMul);
+      if (gold) {
+        this.addRes(3, gold, p.x, p.y - 150);
+        A.play('coin');
+      }
+      this.fire('enemyDie', p, src);
     }
     gameOver(reason) {
       if (this.over) return;
       this.over = true;
       this.overReason = reason;
-      setTimeout(() => U.bus.emit('dialog', 'revive', reason), 700);
+      this.fire('gameOver', reason);
+      this.later(() => U.bus.emit('dialog', 'revive', reason), 700);
     }
     giveUp() {
       this.finish(false);
@@ -531,20 +714,24 @@
       const st = this.st;
       const w = this.world;
       let ending = -1;
-      if (win) {
+      const M = PF.Save.meta;
+      if (win && !this.endless) {
         const allWorlds = Object.keys(st.worlds).length >= 4;
         const all = w.unlockedCount() >= N * N;
         ending = allWorlds ? (all ? 2 : 1) : 0;
-        const M = PF.Save.meta;
-        M.endings[ending] = true;
-        M.endingSkins[ending] = this.skins.slice();
-        st.newBest = PF.Save.setBest(this.twoP, st.elapsed);
+        if (!this.debug) {
+          M.endings[ending] = true;
+          M.endingSkins[ending] = this.skins.slice();
+          st.newBest = PF.Save.setBest(this.twoP, st.elapsed);
+        }
       }
       st.won = 'ended';
-      PF.Save.clearRun(this.twoP);
-      const newly = PF.Save.refreshUnlocks();
+      PF.Save.clearRun(this.twoP, this.endless);
+      const data = { win, ending, newly: [], extra: [] };
+      this.fire('runEnd', win, ending, data);
+      data.newly = this.debug ? [] : PF.Save.refreshUnlocks();
       PF.Save.saveMeta();
-      U.bus.emit('dialog', 'over', { win, ending, newly });
+      U.bus.emit('dialog', 'over', data);
     }
     checkTasks() {
       const st = this.st,
@@ -565,24 +752,31 @@
           const r = D.TASKS[i].reward;
           if (r) for (let k = 0; k < 4; k++) if (r[k]) this.addRes(k, r[k]);
           U.bus.emit('task', i);
+          this.fire('task', i);
         }
       }
     }
     currentTask() {
-      const i = this.st.tasks.findIndex((x) => !x);
-      return i;
+      if (this.endless) return -1;
+      for (const i of TASK_ORDER) if (!this.st.tasks[i]) return i;
+      return -1;
     }
     taskProgress(i) {
       if (i === 0) return Math.min(6, this.world.unlockedCount() - 5) + '/6';
       return '';
     }
     enterPortal(p) {
+      if (this.isNight() || this.pirates.some((e) => !e.dead)) {
+        this.toast(this.isNight() ? '夜里洞窟被迷雾封住了，天亮再来吧' : '先把附近的敌人打退再进洞窟');
+        A.play('wrong');
+        return;
+      }
       if (!this.st.tasks[6]) {
         this.st.tasks[6] = true;
-        this.checkTasks();
         const r = D.TASKS[6].reward;
         if (r) this.addRes(3, r[3]);
         U.bus.emit('task', 6);
+        this.fire('task', 6);
       }
       U.bus.emit('dialog', 'portal', p);
     }
@@ -609,7 +803,7 @@
             case 'lost':
               st.superMan = true;
               this.addRes(3, 30);
-              reward = '一只精灵进化为【森林先知】· 金币 +30';
+              reward = '一只精灵进化为【森林先知】' + (this.workers.length ? '' : '（召唤精灵后生效）') + ' · 金币 +30';
               break;
             case 'number':
               this.addRes(3, 80);
@@ -637,6 +831,7 @@
       }
       this.cam.follow(this.players, 0, true);
       A.music(this.isNight() ? 'night' : 'day');
+      this.fire('miniEnd', p.world, ok);
       U.bus.emit('dialog', 'miniResult', { world: p.world, ok, reward });
       this.save();
     }
@@ -652,82 +847,120 @@
     afterSail(endNow) {
       if (endNow) {
         this.st.tasks[7] = true;
+        this.fire('win');
         this.finish(true);
       } else {
         const dk = this.world.dock;
         const [vx, vy] = PF.World.DIRV[dk.dir];
         for (const p of this.players) {
-          p.x = dk.x - vx * 80 + (p.idx ? 40 : 0);
-          p.y = dk.y - vy * 80 + 10;
+          p.x = dk.x - vx * 170 + (p.idx ? 40 : 0);
+          p.y = dk.y - vy * 170 + 10;
+          if (!this.world.walkable(p.x, p.y, p.r)) {
+            const c = this.world.camp();
+            p.x = c.x;
+            p.y = c.y + 110;
+          }
         }
         this.cut = null;
         this.st.won = true;
         A.music(this.isNight() ? 'night' : 'day');
+        this.save();
       }
     }
 
     /* ---------- 昼夜 ---------- */
+    cycleLen() {
+      return this.dayLen + this.nightLen;
+    }
     isNight() {
       const t = this.st.cycleT;
-      return t >= D.DAY_LEN - D.DUSK / 2 && t < CYCLE - D.DUSK / 2;
+      return t >= this.dayLen - D.DUSK / 2 && t < this.cycleLen() - D.DUSK / 2;
     }
     darkness() {
       const t = this.st.cycleT;
-      const a = D.DAY_LEN - D.DUSK; // 150
-      if (t < a) return 0;
-      if (t < D.DAY_LEN) return (t - a) / D.DUSK;
-      if (t < CYCLE - D.DUSK) return 1;
-      return 1 - (t - (CYCLE - D.DUSK)) / D.DUSK;
+      const a = this.dayLen - D.DUSK;
+      const C = this.cycleLen();
+      let v;
+      if (t < a) v = 0;
+      else if (t < this.dayLen) v = (t - a) / D.DUSK;
+      else if (t < C - D.DUSK) v = 1;
+      else v = 1 - (t - (C - D.DUSK)) / D.DUSK;
+      return U.clamp(v * this.mods.darknessMul, 0, 1);
     }
     stepCycle(dt) {
       const st = this.st;
       const prev = st.cycleT;
+      const L = this.dayLen,
+        C = this.cycleLen();
       st.cycleT += dt;
       const cross = (x) => prev < x && st.cycleT >= x;
-      if (cross(D.DAY_LEN - D.DUSK)) {
+      if (cross(L - D.DUSK)) {
         A.music('night');
         U.bus.emit('dusk');
+        this.fire('dusk');
       }
-      if (cross(D.DAY_LEN)) {
-        st.letterUnread = true;
-        A.play('letter');
-        U.bus.emit('letter');
+      if (cross(L)) {
+        if (!this.endless) {
+          st.letterUnread = true;
+          A.play('letter');
+          U.bus.emit('letter');
+        }
+        this.fire('night');
       }
-      if (cross(D.DAY_LEN + 10)) {
+      if (cross(L + 10)) {
         st.countdown = 10;
         A.play('alarm');
       }
-      if (cross(D.DAY_LEN + 20)) this.spawnRaid();
-      if (cross(CYCLE - D.DUSK)) A.music('day');
-      if (st.countdown > 0) st.countdown = Math.max(0, D.DAY_LEN + 20 - st.cycleT);
-      if (st.cycleT >= CYCLE) {
-        st.cycleT -= CYCLE;
+      if (cross(L + 20)) this.spawnRaid();
+      if (cross(C - D.DUSK)) A.music('day');
+      if (st.countdown > 0) st.countdown = Math.max(0, L + 20 - st.cycleT);
+      if (st.cycleT >= C) {
+        st.cycleT -= C;
         st.day++;
         st.countdown = -1;
         U.bus.emit('day', st.day);
+        this.fire('dawn', st.day);
         this.save();
       }
     }
-    spawnRaid() {
-      const st = this.st;
-      this.st.countdown = -1;
-      const row = D.PIRATES[Math.min(st.day, D.PIRATES.length - 1)];
+    raidPlan(day) {
+      const row = D.PIRATES[Math.min(day, D.PIRATES.length - 1)].slice();
+      // 第 20 天以后继续变强
+      if (day >= D.PIRATES.length) {
+        const extra = day - D.PIRATES.length + 1;
+        row[0] += Math.floor(extra / 2);
+        row[1] += Math.floor(extra / 3);
+        row[2] += Math.floor(extra / 4);
+      }
       const q = [];
       row.forEach((n, k) => {
-        for (let i = 0; i < n; i++) q.push(k);
+        const m = Math.max(0, Math.round(n * this.mods.enemyCountMul));
+        for (let i = 0; i < m; i++) q.push(k);
       });
-      U.shuffle(q);
-      // 选一个有外圈地块的方向
+      return U.shuffle(q);
+    }
+    spawnRaid() {
+      const st = this.st;
+      st.countdown = -1;
+      st.raidDay = st.day;
+      const q = this.raidPlan(st.day);
       const dirs = U.shuffle([0, 1, 2, 3]);
+      let ship = null;
       for (const d of dirs) {
         const outer = this.world.outerTiles(d).filter((t) => t.i !== PF.World.CENTER);
         if (!outer.length) continue;
         const t = U.pick(outer);
-        this.ships.push(new E.Ship(this, d, t.i, q));
-        this.toast('海盗来袭，保护好营地！');
+        ship = this.spawnShip(d, t.i, q);
+        this.toast('海盗从' + DIR_NAME[d] + '边登陆了！停在海盗旁边会自动挥剑');
         U.bus.emit('raid', d);
-        return;
+        break;
       }
+      this.fire('raid', ship);
+    }
+    spawnShip(dir, tile, queue) {
+      const s = new E.Ship(this, dir, tile, queue);
+      this.ships.push(s);
+      return s;
     }
 
     /* ---------- 交互提示 ---------- */
@@ -750,6 +983,21 @@
       for (const pt of w.portals) {
         if (!w.tiles[pt.tile].unlocked) continue;
         if (U.dist(p.x, p.y, pt.x, pt.y + 10) < 95) return { kind: 'portal', label: '进入' + D.WORLDS[pt.world].name, target: pt };
+      }
+      // 各玩法系统的交互点
+      for (const s of PF.Sys.list) {
+        if (!s.prompt) continue;
+        let r = null;
+        try {
+          r = s.prompt(this, p);
+        } catch (e) {
+          console.error('[sys prompt]', s.id, e);
+        }
+        if (r) {
+          r.kind = 'sys';
+          r.sys = s.id;
+          return r;
+        }
       }
       // 地块边缘
       const c = Math.floor(p.x / T),
@@ -794,7 +1042,7 @@
           U.bus.emit('dialog', 'industry', pr.target.kind);
           break;
         case 'shop':
-          U.bus.emit('dialog', 'shop');
+          U.bus.emit('dialog', 'shop', pi);
           break;
         case 'dock':
           this.buildDock();
@@ -805,6 +1053,16 @@
         case 'portal':
           this.enterPortal(pr.target);
           break;
+        case 'sys': {
+          const s = PF.Sys.get(pr.sys);
+          if (s && s.act)
+            try {
+              s.act(this, pi, pr);
+            } catch (e) {
+              console.error('[sys act]', s.id, e);
+            }
+          break;
+        }
       }
     }
 
@@ -855,17 +1113,22 @@
         else p.update(dt, mv);
       }
       // 交互提示
-      const prevPreview = w.previewAmt.slice();
-      const want = new Set();
+      const pv = w.previewAmt;
+      let want0 = -1,
+        want1 = -1;
       for (const p of this.players) {
         const pr = this.findPrompt(p);
         this.prompts[p.idx] = pr;
-        if (pr && pr.kind === 'unlock') want.add(pr.target.i);
+        if (pr && pr.kind === 'unlock') {
+          if (p.idx === 0) want0 = pr.target.i;
+          else want1 = pr.target.i;
+        }
         if (PF.Input.act(p.idx) && pr) this.doPrompt(p.idx);
       }
       for (let i = 0; i < N * N; i++) {
-        const tgt = want.has(i) ? 1 : 0;
-        w.previewAmt[i] = U.clamp(prevPreview[i] + (tgt ? dt * 3 : -dt * 2.5), 0, 1);
+        const tgt = i === want0 || i === want1;
+        if (!tgt && pv[i] === 0) continue;
+        pv[i] = U.clamp(pv[i] + (tgt ? dt * 3 : -dt * 2.5), 0, 1);
       }
       // 宝箱
       for (const ch of w.chests) {
@@ -877,39 +1140,42 @@
             this.fx.sparkle(ch.x, ch.y - 30, '#ffe36b');
             A.play('coin');
             this.toast('打开宝箱：金币 +' + ch.gold);
+            this.fire('chest', ch, p);
             break;
           }
         }
       }
       // 资源再生
+      const rg = this.mods.regrowMul;
       for (const n of w.nodes) {
         if (n.shake > 0) n.shake -= dt;
         if (n.hp > 0 || !w.tiles[n.tile].unlocked) continue;
-        n.regrow -= dt;
+        n.regrow -= dt * rg;
         if (n.regrow <= 0) {
           n.max = this.nodeMax(n);
           n.hp = n.max;
         }
       }
       // 建筑产出
+      const pm = this.mods.prodMul;
       for (const b of w.buildings) {
         const def = D.BUILDINGS[b.kind];
+        if (b.flash > 0) b.flash -= dt;
         if (!b.built || !def.prod) continue;
-        b.prodT += dt;
+        b.prodT += dt * pm;
         if (b.prodT >= def.prod) {
           b.prodT -= def.prod;
           this.addRes(def.res, 1, b.x + U.rand(-30, 30), b.y - 170);
         }
-        if (b.flash > 0) b.flash -= dt;
       }
-      const camp = w.camp();
-      if (camp.flash > 0) camp.flash -= dt;
-      // 精灵、海盗、船
+      // 精灵、敌人、船
       for (const wk of this.workers) wk.update(dt);
       for (const p of this.pirates) p.update(dt);
-      this.pirates = this.pirates.filter((p) => !p.dead || p.deadT > 0);
+      if (this.pirates.some((p) => p.dead && !(p.deadT > 0))) this.pirates = this.pirates.filter((p) => !p.dead || p.deadT > 0);
       for (const s of this.ships) s.update(dt);
-      this.ships = this.ships.filter((s) => !s.done);
+      if (this.ships.some((s) => s.done)) this.ships = this.ships.filter((s) => !s.done);
+      // 各玩法系统
+      this.fire('update', dt);
       // 环境
       this.gullT -= dt;
       if (this.gullT <= 0) {
@@ -923,7 +1189,7 @@
         }
       }
       for (const g of this.gulls) g.update(dt);
-      this.gulls = this.gulls.filter((g) => g.life > 0);
+      if (this.gulls.some((g) => g.life <= 0)) this.gulls = this.gulls.filter((g) => g.life > 0);
       for (const f of this.fins) f.update(dt);
       for (const c of this.crabs) c.update(dt);
       this.fx.update(dt);
@@ -953,6 +1219,8 @@
       for (const f of this.fins) if (cam.visible(f.x, f.y, 60)) f.draw(ctx);
       w.drawMainland(ctx, cam, time);
       w.drawTiles(ctx, cam, time);
+      this.drawTargetRings(ctx);
+      this.fire('drawGround', ctx, cam);
       // y 排序的物体
       const list = [];
       const add = (y, fn) => list.push({ y, fn });
@@ -971,14 +1239,101 @@
       for (const p of this.pirates) if (cam.visible(p.x, p.y, 160)) add(p.y, () => p.draw(ctx));
       for (const s of this.ships) add(s.y - 40, () => s.draw(ctx));
       if (this.cut) add(this.cut.y + 1, () => this.drawSailRaft(ctx));
+      this.fire('drawables', add, cam);
       list.sort((a, b) => a.y - b.y);
       for (const it of list) it.fn();
       this.fx.draw(ctx);
+      this.fire('drawTop', ctx, cam);
       for (const g of this.gulls) g.drawShadow(ctx);
       w.drawFog(ctx, cam, time);
       for (const g of this.gulls) if (cam.visible(g.x, g.y, 80)) g.draw(ctx);
+      this.fire('drawOverFog', ctx, cam);
       // 夜晚光照
       this.drawLight(ctx, dpr);
+      // 屏幕空间
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.fire('drawScreen', ctx, dpr, cam);
+      this.drawOffscreen(ctx);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    /* 正在采集 / 攻击的目标脚下画个圈，让“停下=自动干活”看得见 */
+    drawTargetRings(ctx) {
+      for (const p of this.players) {
+        if (!p.actKind || !p.actTarget || p.down) continue;
+        const t = p.actTarget;
+        const col = p.actKind === 'atk' ? 'rgba(255,90,79,0.8)' : p.actKind === 'repair' ? 'rgba(155,227,138,0.8)' : 'rgba(255,240,170,0.85)';
+        const r = p.actKind === 'repair' ? 90 : 36;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 5;
+        ctx.setLineDash([12, 8]);
+        ctx.lineDashOffset = -this.time * 30;
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + 2, r, r * 0.38, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    /* 屏幕外的敌人：边缘红色箭头 */
+    drawOffscreen(ctx) {
+      const cam = this.cam;
+      const W = cam.W,
+        H = cam.H;
+      let n = 0;
+      const arrow = (sx, sy, col, label) => {
+        const cx = W / 2,
+          cy = H / 2;
+        const dx = sx - cx,
+          dy = sy - cy;
+        const m = 36;
+        const k = Math.min((W / 2 - m) / Math.abs(dx || 1e-6), (H / 2 - m) / Math.abs(dy || 1e-6));
+        const ax = cx + dx * k,
+          ay = cy + dy * k;
+        const ang = Math.atan2(dy, dx);
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(ang);
+        ctx.fillStyle = col;
+        ctx.strokeStyle = '#1c1424';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(16, 0);
+        ctx.lineTo(-10, -12);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(-10, 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        if (label) {
+          ctx.font = 'bold 13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#1c1424';
+          ctx.strokeText(label, ax - Math.cos(ang) * 24, ay - Math.sin(ang) * 24);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(label, ax - Math.cos(ang) * 24, ay - Math.sin(ang) * 24);
+        }
+      };
+      const pulse = 0.65 + Math.sin(this.time * 8) * 0.35;
+      for (const e of this.pirates) {
+        if (e.dead || n >= 8) continue;
+        const s = cam.toScreen(e.x, e.y - 40);
+        if (s.x > -10 && s.x < W + 10 && s.y > -10 && s.y < H + 10) continue;
+        n++;
+        arrow(s.x, s.y, `rgba(255,70,60,${pulse})`, e.isBoss ? '首领' : null);
+      }
+      for (const s of this.ships) {
+        if (s.state === 'leave') continue;
+        const p = cam.toScreen(s.x, s.y);
+        if (p.x > 0 && p.x < W && p.y > 0 && p.y < H) continue;
+        arrow(p.x, p.y, `rgba(255,70,60,${pulse})`, '海盗船');
+      }
+      const camp = this.world.camp();
+      if (camp.flash > 0 || (this.st.campHp < this.campHpMax() * 0.5 && this.pirates.some((e) => !e.dead))) {
+        const p = cam.toScreen(camp.x, camp.y - 60);
+        if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) arrow(p.x, p.y, '#ffb238', '营地');
+      }
     }
     drawNode(ctx, n) {
       const w = this.world;
@@ -997,11 +1352,11 @@
           E.shadow(ctx, n.x, n.y, n.big ? 44 : 30, 10);
         }
       } else {
-        img = n.type === 0 ? S.stump(n.big) : n.type === 1 ? S.stubble(n.big) : S.rubble(n.big);
         if (n.regrow > 99000) {
           ctx.globalAlpha = 1;
           return;
         }
+        img = n.type === 0 ? S.stump(n.big) : n.type === 1 ? S.stubble(n.big) : S.rubble(n.big);
       }
       E.drawSprite(ctx, img, n.x + sx, n.y + 6);
       ctx.globalAlpha = 1;
@@ -1113,7 +1468,7 @@
       x.globalAlpha = 1;
       x.clearRect(0, 0, lw, lh);
       const t = this.st.cycleT;
-      const dusk = t < D.DAY_LEN ? 1 - (t - (D.DAY_LEN - D.DUSK)) / D.DUSK : 0;
+      const dusk = t < this.dayLen ? U.clamp(1 - (t - (this.dayLen - D.DUSK)) / D.DUSK, 0, 1) : 0;
       const col = dusk > 0 ? `rgba(${Math.round(U.lerp(12, 70, dusk))},${Math.round(U.lerp(14, 30, dusk))},${Math.round(U.lerp(44, 50, dusk))},${0.8 * dark})` : `rgba(12,14,44,${0.8 * dark})`;
       x.fillStyle = col;
       x.fillRect(0, 0, lw, lh);
@@ -1124,7 +1479,7 @@
           sy = s.y / LS,
           sr = (r * cam.z) / LS;
         if (sx < -sr || sy < -sr || sx > lw + sr || sy > lh + sr) return;
-        x.globalAlpha = a;
+        x.globalAlpha = a == null ? 1 : a;
         x.drawImage(stamps.cut, sx - sr, sy - sr, sr * 2, sr * 2);
       };
       const camp = this.world.camp();
@@ -1137,6 +1492,7 @@
       for (const s of this.ships) light(s.x, s.y - 60, 200, 0.7);
       if (this.world.dock && this.world.dock.built) light(this.world.dock.x, this.world.dock.y, 160, 0.7);
       if (this.cut) light(this.cut.x, this.cut.y, 300, 1);
+      this.fire('lights', light);
       x.globalAlpha = 1;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = true;
@@ -1183,4 +1539,7 @@
 
   PF.Camera = Camera;
   PF.Game = Game;
+  PF.Game.TASK_ORDER = TASK_ORDER;
+  PF.Game.DIR_NAME = DIR_NAME;
+  PF.Game.lightStamps = lightStamps;
 })();

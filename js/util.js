@@ -79,4 +79,21 @@
   };
 
   PF.U = U;
+
+  /* 玩法插件注册表：每个新玩法（防御塔、天气、钓鱼……）是一个“系统”，
+     在自己的文件里 PF.Sys.register({...})，由 Game 在各个时机回调。接口见 docs/PLUGIN_API.md */
+  PF.Sys = {
+    list: [],
+    register(s) {
+      const i = this.list.findIndex((x) => x.id === s.id);
+      if (i >= 0) this.list.splice(i, 1);
+      this.list.push(s);
+      this.list.sort((a, b) => (a.order || 0) - (b.order || 0));
+    },
+    get(id) {
+      return this.list.find((s) => s.id === id);
+    },
+  };
+  /* 全局钩子（菜单、角色外观等不属于某一局的扩展点） */
+  PF.Hooks = PF.Hooks || {};
 })();

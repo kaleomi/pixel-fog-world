@@ -9,9 +9,10 @@
     left: ['KeyA', 'ArrowLeft'],
     right: ['KeyD', 'ArrowRight'],
     act: ['Space', 'KeyE', 'Enter', 'KeyJ', 'KeyF', 'NumpadEnter'],
+    skill: ['KeyQ', 'KeyK', 'ShiftLeft'],
   };
-  const KEYS_P1 = { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], act: ['KeyF', 'KeyE', 'Space', 'KeyG'] };
-  const KEYS_P2 = { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], act: ['Enter', 'KeyL', 'Numpad0', 'Slash', 'NumpadEnter', 'ShiftRight'] };
+  const KEYS_P1 = { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], act: ['KeyF', 'KeyE', 'Space', 'KeyG'], skill: ['KeyQ', 'KeyR'] };
+  const KEYS_P2 = { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], act: ['Enter', 'KeyL', 'Numpad0', 'Slash', 'NumpadEnter'], skill: ['ShiftRight', 'Period', 'Numpad1', 'KeyK'] };
 
   const I = {
     keys: {},
@@ -137,14 +138,24 @@
     act(pi) {
       return this.enabled && this.anyPressed(this.map(pi).act);
     },
+    skill(pi) {
+      return this.enabled && this.anyPressed(this.map(pi).skill);
+    },
+    /* 系统可以注册额外按键（返回本帧是否按下） */
+    keyPressed(code) {
+      return !!this.pressed[code];
+    },
+    keyDown(code) {
+      return !!this.keys[code];
+    },
     pausePressed() {
       return this.pressed['Escape'] || this.pressed['KeyP'];
     },
     endFrame() {
       this.pressed = {};
     },
+    /* 只清掉“刚按下”和摇杆；按住的键保持（打开弹窗后松手也能正确处理） */
     reset() {
-      this.keys = {};
       this.pressed = {};
       this.sticks.forEach((s, i) => {
         resetStick(s);

@@ -49,7 +49,12 @@
     },
     setMusic(on) {
       this.musicOn = on;
-      if (this.musicBus) this.musicBus.gain.value = on ? 0.22 : 0;
+      if (this.musicBus) this.musicBus.gain.value = on && !this.ducked ? 0.22 : 0;
+    },
+    /* 暂停 / 切到后台时静音音乐 */
+    duck(on) {
+      this.ducked = !!on;
+      if (this.musicBus) this.musicBus.gain.value = this.musicOn && !this.ducked ? 0.22 : 0;
     },
     tone(f, dur, type, vol, slide, when, bus) {
       const ctx = this.ctx;
@@ -148,13 +153,15 @@
       const S = SONGS[this.mode];
       if (!S) return;
       const spb = 60 / S.bpm / 4; // 16 分音符
+      // 计时器被浏览器节流后不要一口气补一堆音符
+      if (this.nextTime < ctx.currentTime - 0.2) this.nextTime = ctx.currentTime + 0.05;
       while (this.nextTime < ctx.currentTime + 0.15) {
         const st = this.step;
         const t = this.nextTime;
         const bar = Math.floor(st / 16) % S.chords.length;
         const root = S.chords[bar];
         const i16 = st % 16;
-        if (this.musicOn) {
+        if (this.musicOn && !this.ducked) {
           // 低音
           if (S.bass[i16] !== '.') this.tone(midi(root + S.bassOff), spb * (S.bassLen || 2), 'triangle', 0.32, null, t, this.musicBus);
           // 旋律
