@@ -94,7 +94,7 @@
 - `taskText(g)`：返回字符串时替换 HUD 上的“目标”文字（无尽模式用）。
 - `help()`：返回 HTML（`<p><b>标题：</b>说明</p>`），追加到“玩法说明”。
 - HUD 挂点（index.html 里已有，默认隐藏，加 `.on` 显示）：
-  `#rightCol` 右下角按钮列，内含 `#buildBtn`、`#skillBtn0`（1P）、`#skillBtn1`（2P，固定在左下）——都是 `.hudbtn`；
+  `#rightCol` 右下角按钮列，内含 `#buildBtn`、`#skillBtn0`、`#skillBtn1`（双人时 1P 技能键在左下、2P 在右列，与左右半屏摇杆对应）——都是 `.hudbtn`；
   `#bossBar` 顶部中间；`#weatherBox` 右上角时钟左边；`#alerts` 左侧提示列（可 `appendChild`）；
   `.res` 资源条（可追加 `.pill`）；`#extHud` 自由层（`pointer-events: none`，子元素自己打开）。
 - 弹窗：`PF.UI.open(html, 'w-sm' | 'w-md', onAct(act, btn, wrap), {refresh: () => html})`，`PF.UI.close()`，`PF.UI.toast(msg)`。打开弹窗会暂停本局。

@@ -111,3 +111,7 @@ body.touch .hudbtn .kh { display: none; }
   #cbBossWarn { top: 34%; padding: 6px 18px 8px; }
   #cbBossWarn b { font-size: 28px; }
 }
+/* 桌面：首领血条出现时，提示条往下让一让 */
+@media (min-width: 561px) and (min-height: 501px) {
+  #app:has(#bossBar.on) #toasts { top: calc(200px + var(--st)); }
+}
