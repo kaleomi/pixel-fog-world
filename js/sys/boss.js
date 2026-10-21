@@ -13,8 +13,8 @@
     E = PF.Ent;
   const OUT = '#1c1424';
   const DIR_NAME = ['北', '南', '西', '东'];
-  const SWEEP = { r: 115, every: 2.2, wind: 0.5 };
-  const BARRAGE = { n: 5, r: 80, delay: 1.3, dmg: 20, every: 9, everyEnr: 6 };
+  const SWEEP = { r: 115, every: 2.6, wind: 0.6 };
+  const BARRAGE = { n: 5, r: 80, delay: 1.3, dmg: 16, every: 9, everyEnr: 6 };
   const SUMMON = { every: 18, n: 2, cap: 6 };
 
   /* ---------------- 像素图 ---------------- */
@@ -104,7 +104,7 @@
   class Boss extends E.Pirate {
     constructor(g, x, y, land, n) {
       const st = g.sys.boss;
-      super(g, { id: 'boss', name: '独眼船长', hp: 500 + 250 * st.defeated, atk: 14, speed: 110, gold: 120, scale: 1.6, atkCD: 1 }, x, y, land);
+      super(g, { id: 'boss', name: '独眼船长', hp: 400 + 250 * st.defeated, atk: 11 + 3 * Math.min(st.defeated, 4), speed: 110, gold: 120, scale: 1.6, atkCD: 1 }, x, y, land);
       this.isBoss = true;
       this.noSave = true;
       this.n = n;

@@ -691,6 +691,7 @@
     });
     $('#storySkip').addEventListener('click', (e) => {
       e.stopPropagation();
+      if (!App.story) return; // 剧情没在放（或已开局）时不响应，避免重复开局
       A.play('click');
       App.story = null;
       startGame(null);
