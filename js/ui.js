@@ -353,7 +353,7 @@
       const showBtn = touch && !g.twoP && !!pr0 && !g.paused && !g.cut && !g.over;
       this.actBtn.classList.toggle('on', showBtn);
       if (showBtn) {
-        const lab = pr0.kind === 'unlock' ? '驱散' : pr0.kind === 'build' || pr0.kind === 'dock' ? '建造' : pr0.kind === 'portal' ? '进入' : pr0.kind === 'sail' ? '启航' : '打开';
+        const lab = pr0.btn || (pr0.kind === 'unlock' ? '驱散' : pr0.kind === 'build' || pr0.kind === 'dock' ? '建造' : pr0.kind === 'portal' ? '进入' : pr0.kind === 'sail' ? '启航' : '打开');
         if (this.actBtn._l !== lab) {
           this.actBtn._l = lab;
           this.actBtn.textContent = lab;

@@ -74,6 +74,12 @@
 
 - `prompt(g, player)`：返回 `{label, cost?, note?, ...任意数据}` 或 `null`。核心先检查建筑、木筏、洞窟，然后依次问各系统，最后才是“驱散迷雾”。返回的对象会被加上 `kind: 'sys', sys: id`，显示成玩家头顶的气泡；`cost` 为 `[木, 稻, 晶, 金]`，不够时气泡会显示“还差…”。
 - `act(g, playerIndex, prompt)`：玩家点了气泡 / 按了交互键。
+- 气泡对象可选字段：`btn`（手机右下角大按钮上的 2~3 个字，默认“打开”）、`note`（气泡里的一行绿色说明）。
+- 自定义统计：任何系统都可以 `g.fire('stat', 名字, 数量)` 上报（成就系统用 `stat(g, name, n)` 钩子监听）。约定的名字：
+  `boss`（击败首领）、`fogmon`（击败雾怪）、`tower`（建箭塔）、`trap`（建陷阱）、`bonfire`（建篝火）、`skill`（使用技能）、
+  `fish`（钓到鱼）、`rareFish`（钓到彩虹鱼）、`pet`（驯服 / 领养宠物）、`event`（遇到随机事件）、`merchant`（在商船买东西）、
+  `treasure`（挖到宝藏）、`landmark`（激活特殊地块）、`puzzle`（解开遗迹谜题）、`cook`（做料理）。
+- 天气：`g.sys.events.weather` 为 `'clear' | 'rain' | 'storm'`（由天气系统维护，其他系统只读）。
 
 ## 营地 / 集市标签页
 
