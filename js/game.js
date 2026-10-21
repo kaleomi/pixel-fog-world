@@ -163,6 +163,9 @@
       const fresh = !(sv && sv.v === SAVE_VER);
       if (!fresh) this.load(sv);
       else this.fresh();
+      // 测试局（?rich / ?fast）的标记存进存档：去掉参数继续玩也不记成就、结晶
+      if (this.debug) this.st.debug = true;
+      else if (this.st.debug) this.debug = true;
       // 初始化各玩法系统
       for (const s of PF.Sys.list) {
         if (!s.init) continue;
@@ -986,7 +989,8 @@
         if (!w.tiles[pt.tile].unlocked) continue;
         if (U.dist(p.x, p.y, pt.x, pt.y + 10) < 95) return { kind: 'portal', label: '进入' + D.WORLDS[pt.world].name, target: pt };
       }
-      // 各玩法系统的交互点
+      // 各玩法系统的交互点（low: true 的让位给“驱散迷雾”等核心交互）
+      let low = null;
       for (const s of PF.Sys.list) {
         if (!s.prompt) continue;
         let r = null;
@@ -998,13 +1002,14 @@
         if (r) {
           r.kind = 'sys';
           r.sys = s.id;
-          return r;
+          if (!r.low) return r;
+          if (!low) low = r;
         }
       }
       // 地块边缘
       const c = Math.floor(p.x / T),
         r = Math.floor(p.y / T);
-      if (c < 0 || r < 0 || c >= N || r >= N) return null;
+      if (c < 0 || r < 0 || c >= N || r >= N) return low;
       const lx = p.x - c * T,
         ly = p.y - r * T;
       const M = 72;
@@ -1024,7 +1029,7 @@
       if (lx < M) cand(r, c - 1, lx);
       if (lx > T - M) cand(r, c + 1, T - lx);
       if (best) return { kind: 'unlock', label: '驱散迷雾', cost: this.tileCost(best), target: best };
-      return null;
+      return low;
     }
     doPrompt(pi) {
       const pr = this.prompts[pi];

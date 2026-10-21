@@ -95,6 +95,7 @@
         }
       });
       this.modal = { el: wrap, cls, onAct, opts: opts || {} };
+      document.body.classList.add('dlg-open');
       if (this.game && !(opts && opts.noPause)) {
         this.game.paused = true;
         if (opts && opts.duck) A.duck(true);
@@ -109,6 +110,7 @@
       const m = this.modal;
       this.modal = null;
       m.el.remove();
+      document.body.classList.remove('dlg-open');
       if (m.opts.onClose) m.opts.onClose();
       if (this.game && !this.modal) this.game.paused = false;
       A.duck(false);
@@ -127,6 +129,7 @@
     },
     toast(msg) {
       if (!msg) return;
+      if (this.game && this.game.st && this.game.st.won === 'ended') return; // 已结算：不再弹游戏内提示
       const el = document.createElement('div');
       el.className = 'toast';
       el.textContent = msg;
@@ -173,6 +176,12 @@
         this.actBtn.classList.remove('on');
       }
     },
+    fmtRes(n, narrow) {
+      if (n >= 100000) return Math.floor(n / 1000) + 'k';
+      if (narrow && n >= 10000) return Math.floor(n / 1000) + 'k';
+      if (narrow && n >= 1000) return (Math.floor(n / 100) / 10).toFixed(1) + 'k';
+      return String(n);
+    },
     set(id, v) {
       if (this.hudCache[id] === v) return;
       this.hudCache[id] = v;
@@ -189,10 +198,9 @@
     },
     updateHUD(g, dt) {
       const st = g.st;
-      this.set('r0', st.res[0]);
-      this.set('r1', st.res[1]);
-      this.set('r2', st.res[2]);
-      this.set('r3', st.res[3]);
+      // 窄屏（竖屏手机）上大数字缩写成 1.2k，免得撑破资源条
+      const narrow = window.innerWidth <= 560;
+      for (let i = 0; i < 4; i++) this.set('r' + i, this.fmtRes(st.res[i], narrow));
       this.set('dayLabel', (g.endless ? '第' + (st.day + 1) + '夜' : '第' + (st.day + 1) + '天'));
       const ext = g.collect('taskText');
       if (ext.length) this.set('taskText', ext[0]);
@@ -602,11 +610,15 @@
       if (data.newly && data.newly.length) extra += `<div class="info center gold">解锁新角色：${data.newly.map((i) => D.ROLES[i].name).join('、')}</div>`;
       if (data.extra && data.extra.length) extra += data.extra.join('');
       const head = data.title || (win ? '探险成功' : '探险失败');
+      // 内容可能很多（结晶、成就、插件统计），中间滚动，“返回”始终在底部可见
       const html = `<div class="dh center ${win ? 'win' : 'lose'}"><span>${head}</span></div>
+        <div class="scroll over-body">
         <div class="over-hero">${g.players.map((p) => this.spriteIcon(S.human(p.skin, 'idle0'))).join('')}</div>
         ${extra}<div class="stats">${rows}</div>${data.statsExtra ? '<div class="stats">' + data.statsExtra.join('') + '</div>' : ''}
+        </div>
         <div class="btns"><button class="btn" data-act="back">返回</button></div>`;
       A.play(win ? 'success' : 'fail');
+      this.toastRoot.innerHTML = ''; // 结算时清掉残留提示
       this.open(html, 'w-md', () => {
         this.close(true);
         U.bus.emit('toMenu');
@@ -654,7 +666,7 @@
       const g = this.game;
       const M = PF.Save.meta;
       const render = () => `<div class="dh center"><span>暂停</span></div>
-        <div class="btns col">
+        <div class="btns col pausebtns">
           <button class="btn green" data-act="resume">继续游戏</button>
           <button class="btn" data-act="help">玩法说明</button>
           <button class="btn ${M.settings.music ? 'yellow' : 'gray2'}" data-act="music">音乐：${M.settings.music ? '开' : '关'}</button>

@@ -75,7 +75,7 @@ img.pix, .pill img, .cost img, #pirN img { image-rendering: pixelated; }
 /* ---------------- HUD ---------------- */
 #hud { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 #hud.hidden { display: none; }
-#hud.mini .top .res, #hud.mini .row2, #hud.mini #alerts, #hud.mini #minimap, #hud.mini .daybox, #hud.mini #deskHint { display: none !important; }
+#hud.mini .top .res, #hud.mini .row2, #hud.mini #alerts, #hud.mini #minimap, #hud.mini .daybox, #hud.mini #deskHint, #hud.mini #weatherBox { display: none !important; }
 #hud .top {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
   padding: calc(8px + var(--st)) calc(10px + var(--sr)) 0 calc(10px + var(--sl));
@@ -293,7 +293,8 @@ body.touch #deskHint { display: none; }
 .letter .ld { position: absolute; left: 10px; bottom: 6px; opacity: .85; }
 .letter .ld img { width: 48px; }
 .paper .btns { margin-top: 12px; }
-.over-hero { display: flex; justify-content: center; gap: 10px; }
+.over-body { display: flex; flex-direction: column; gap: 6px; }
+.over-hero { display: flex; justify-content: center; gap: 10px; flex: none; }
 .over-hero img { width: 66px; image-rendering: pixelated; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
 .stat { display: flex; justify-content: space-between; align-items: center; gap: 6px; background: #fff7e6; border: 2px solid #d9be8c; border-radius: 6px; padding: 6px 10px; font-size: 13px; color: #6b4a2f; }
@@ -355,6 +356,14 @@ body.touch #deskHint { display: none; }
   .stitle { font-size: 28px; }
   .dlg { max-height: 94vh; }
   #minimap { width: 76px; height: 76px; top: calc(96px + var(--st)); }
-  #toasts { top: calc(130px + var(--st)); }
   .endc { width: 200px; }
+}
+
+/* 弹窗打开时，提示条挪到屏幕最上方，不压住弹窗内容 */
+body.dlg-open #toasts { top: calc(6px + var(--st)); bottom: auto; }
+/* 放大的小地图盖在其它 HUD 按钮上面 */
+#minimap.big { z-index: 3; }
+@media (max-height: 500px) {
+  .btns.col.pausebtns { display: grid; grid-template-columns: 1fr 1fr; }
+  .over-hero img { width: 42px; }
 }

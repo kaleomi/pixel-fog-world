@@ -450,7 +450,7 @@
       const day = sv.st ? sv.st.day + 1 : 1;
       UI.open(
         `<div class="dh center"><span>继续${endless ? '守夜' : '探险'}？</span></div>
-        <div class="info center">发现${two ? '双人' : '单人'}${endless ? '无尽守夜' : '模式'}未完成的进度（第 ${day} ${endless ? '夜' : '天'}，已驱散 ${sv.world.tiles.filter((t) => t[0]).length - 5} 块迷雾）。</div>
+        <div class="info center">发现${two ? '双人' : '单人'}${endless ? '无尽守夜' : '模式'}未完成的进度（第 ${day} ${endless ? '夜' : '天'}，已驱散 ${Math.max(0, sv.world.tiles.filter((t) => t[0]).length - ((sv.st && sv.st.baseTiles) || 5))} 块迷雾）。</div>
         <div class="btns col"><button class="btn green" data-act="cont">继续上次的探险</button><button class="btn" data-act="new">开始新的探险</button><button class="btn gray2" data-act="close">取消</button></div>`,
         'w-sm',
         (act) => {
@@ -563,7 +563,7 @@
           if (!UI.modal) UI.openPause();
           else {
             // Esc 关闭可关闭的弹窗
-            const b = UI.modal.el.querySelector('[data-act="resume"],[data-act="close"],[data-act="ok"]');
+            const b = UI.modal.el.querySelector('[data-act="resume"],[data-act="close"],[data-act="ok"],[data-act="back"]');
             if (b) b.click();
           }
         }

@@ -94,7 +94,7 @@
 .meta-gain .mg-a { font-size: 13px; font-weight: 900; color: #ffd23f; margin-top: 4px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; }
 .meta-gain .mg-t { font-size: 11px; color: #9d8cc0; margin-top: 3px; }
 /* 结算框里塞了结晶 / 守夜信息后，矮屏上可能放不下：让这个弹窗可以上下滑 */
-.dlg:has(.meta-gain) { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+
 
 /* ---------------- 适配 ---------------- */
 @media (max-width: 560px) {

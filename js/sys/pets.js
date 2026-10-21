@@ -566,7 +566,7 @@
       s.tipT -= dt;
       if (s.tipT <= 0) {
         s.tipT = 1;
-        if (!s.tipCrab && fishTotal(g) > 0 && canAdopt(g, 'crab') && g.crabs && g.crabs.length) {
+        if (!s.tipCrab && fishTotal(g) > 0 && canAdopt(g, 'crab') && g.crabs && g.crabs.some((c) => { const t = g.world.tileIdx(c.x, c.y); return t >= 0 && g.world.tiles[t].unlocked; })) {
           s.tipCrab = true;
           g.later(() => g.toast('提示：带着鱼走近海滩上的螃蟹，可以驯服它当宠物'), 2500);
         }
@@ -587,7 +587,7 @@
         }
       }
       if (!best) return null;
-      return { label: '喂螃蟹（1 条鱼）', btn: '喂鱼', note: '驯服它当宠物', what: 'tame', crab: best };
+      return { label: '喂螃蟹（1 条鱼）', btn: '喂鱼', note: '驯服它当宠物', what: 'tame', crab: best, low: true };
     },
     act(g, pi, pr) {
       if (pr.what !== 'tame') return;

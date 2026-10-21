@@ -67,7 +67,8 @@
     },
     taskText(g) {
       if (!g.endless) return null;
-      return '无尽守夜 · 已撑过 ' + g.st.day + ' 夜 · 最佳 ' + Math.max(bestOf(g), (g.sys.endless && g.sys.endless.best0) || 0) + ' 夜';
+      const best = Math.max(bestOf(g), (g.sys.endless && g.sys.endless.best0) || 0);
+      return '无尽守夜 · 已撑过 ' + g.st.day + ' 夜 · ' + (g.st.day > best ? '新纪录！' : '最佳 ' + best + ' 夜');
     },
     runEnd(g, win, ending, data) {
       if (!g.endless) return;

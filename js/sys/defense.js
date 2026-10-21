@@ -257,6 +257,14 @@
       if (U.dist(x, y, n.x, n.y) < 40 + w.nodeSolidR(n)) return '离树木或水晶太近了';
     }
     for (const c of w.chests) if (!c.opened && U.dist(x, y, c.x, c.y) < 70) return '离宝箱太近了';
+    // 地标（灯塔、温泉、沉船、遗迹石板）周围留空，免得挡住或压住
+    const lm = g.sys.landmarks;
+    if (lm && lm.list)
+      for (const l of lm.list) {
+        if (!w.tiles[l.tile] || !w.tiles[l.tile].unlocked) continue;
+        const R = { lighthouse: 130, spring: 140, wreck: 150, ruins: 195 }[l.kind] || 150;
+        if (U.dist(x, y, l.x, l.y) < R) return '离' + ({ lighthouse: '灯塔', spring: '温泉', wreck: '沉船', ruins: '遗迹' }[l.kind] || '地标') + '太近了';
+      }
     return null;
   }
 
@@ -733,7 +741,7 @@
         }
       }
       if (!best) return null;
-      return { label: TYPES[best.t].name + ' Lv' + best.lv, note: best.lv < MAXLV ? '升级 / 拆除' : '拆除', btn: '管理', def: best };
+      return { label: TYPES[best.t].name + ' Lv' + best.lv, note: best.lv < MAXLV ? '升级 / 拆除' : '拆除', btn: '管理', def: best, low: true };
     },
     act(g, pi, pr) {
       if (pr && pr.def && g.sys.defense.list.includes(pr.def)) openManage(g, pr.def);
