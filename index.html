@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>像素迷雾世界</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="洪水淹没家园，你漂到迷雾笼罩的小岛。采集资源、驱散迷雾、抵御海盗，找到雾外的新大陆。手机电脑都能玩的像素生存建造小游戏，支持同屏双人。">
+  <meta name="theme-color" content="#1c1424">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="像素迷雾世界">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="x5-orientation" content="portrait|landscape">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="cv"></canvas>
+    <div id="touch"></div>
+    <div id="stick0" class="stick"></div><div id="knob0" class="knob"></div>
+    <div id="stick1" class="stick p2"></div><div id="knob1" class="knob p2"></div>
+
+    <!-- 游戏内 HUD -->
+    <div id="hud" class="hidden">
+      <div class="top">
+        <div class="res">
+          <div class="pill"><img data-icon="0" alt="木材"><span id="r0">0</span></div>
+          <div class="pill"><img data-icon="1" alt="水稻"><span id="r1">0</span></div>
+          <div class="pill"><img data-icon="2" alt="紫水晶"><span id="r2">0</span></div>
+          <div class="pill gold"><img data-icon="3" alt="金币"><span id="r3">0</span></div>
+        </div>
+        <div class="right">
+          <div class="daybox"><canvas id="clock" width="88" height="88"></canvas><span id="dayLabel">第1天</span></div>
+          <button id="btnPause" class="iconbtn" aria-label="暂停">❚❚</button>
+        </div>
+      </div>
+      <div class="row2">
+        <div id="task"><span class="tg">目标</span><span id="taskText"></span></div>
+        <div class="camp"><span class="lab">营地</span><div class="bar"><div id="campHp"></div></div><span id="campHpTxt"></span></div>
+      </div>
+      <div id="alerts">
+        <div id="countdown"><span>海盗来袭</span><b id="cdNum">0:10</b></div>
+        <div id="pirN"><img data-icon="6" alt=""><span>海盗 ×<b id="pirNum">0</b></span></div>
+        <button id="letterBtn"><span class="env">✉</span><span>海盗来信</span></button>
+      </div>
+      <canvas id="minimap" width="120" height="120" title="点击放大/缩小"></canvas>
+      <div id="deskHint"></div>
+    </div>
+
+    <div id="prompt0" class="prompt"></div>
+    <div id="prompt1" class="prompt p2"></div>
+    <button id="actBtn"></button>
+    <div id="toasts"></div>
+    <div id="warn"></div>
+    <div id="banner"></div>
+
+    <!-- 菜单页 -->
+    <div id="screens">
+      <section class="scr" id="scrTitle">
+        <div class="logo"><div class="l1">像素迷雾世界</div><div class="l2">PIXEL · FOG · WORLD</div></div>
+        <button class="btn big yellow" data-go="mode">开始探险</button>
+        <div class="foot">手机、电脑都能玩 · 横屏竖屏都可以 · 支持同屏双人</div>
+      </section>
+
+      <section class="scr" id="scrMode">
+        <div class="stitle">选择模式</div>
+        <div class="modes">
+          <button class="mode panel" data-mode="1">
+            <canvas class="mart" width="132" height="96" data-art="1"></canvas>
+            <div class="mt">单人模式</div>
+            <div class="md">独自漂流，一个人建设小岛</div>
+            <div class="best" id="best0">最好成绩：--:--:--</div>
+          </button>
+          <button class="mode panel" data-mode="2">
+            <canvas class="mart" width="132" height="96" data-art="2"></canvas>
+            <div class="mt">双人模式</div>
+            <div class="md">同一台设备，两人合作</div>
+            <div class="best" id="best1">最好成绩：--:--:--</div>
+          </button>
+        </div>
+        <div class="mrow">
+          <button class="btn sm" data-go="endings">结局图鉴</button>
+          <button class="btn sm" data-go="help">玩法说明</button>
+          <button class="btn sm" id="btnMusic">音乐：开</button>
+          <button class="btn sm" id="btnSfx">音效：开</button>
+        </div>
+        <button class="back" data-go="title">‹ 返回</button>
+      </section>
+
+      <section class="scr" id="scrRole">
+        <div class="stitle" id="roleTitle">选择角色</div>
+        <div class="rolewrap">
+          <div class="roles" id="roleGrid"></div>
+          <div class="roledetail panel" id="roleDetail"></div>
+        </div>
+        <button class="back" data-go="mode">‹ 返回</button>
+      </section>
+
+      <section class="scr" id="scrStory">
+        <canvas id="storyCv" width="320" height="180"></canvas>
+        <div class="cap" id="storyCap"></div>
+        <div class="tapnext">点击继续</div>
+        <button class="skip" id="storySkip">跳过 ›</button>
+      </section>
+
+      <section class="scr" id="scrEndings">
+        <div class="stitle">结局图鉴</div>
+        <div class="ends" id="endGrid"></div>
+        <button class="back" data-go="mode">‹ 返回</button>
+      </section>
+    </div>
+
+    <div id="dlg"></div>
+    <div id="fade"></div>
+    <div id="rotateTip"></div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/minigames.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

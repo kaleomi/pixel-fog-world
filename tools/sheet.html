@@ -1,0 +1,24 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{background:#456;margin:0}canvas{image-rendering:pixelated}</style></head><body>
+<canvas id="c" width="1400" height="900"></canvas>
+<script src="../js/util.js"></script><script src="../js/data.js"></script><script src="../js/sprites.js"></script>
+<script>
+const S=PF.Spr, c=document.getElementById('c'), x=c.getContext('2d'); x.imageSmoothingEnabled=false;
+let X=10,Y=10,rowH=0;
+function put(img,sc,label){ sc=sc||4; if(X+img.width*sc>1390){X=10;Y+=rowH+18;rowH=0;} x.drawImage(img,X,Y,img.width*sc,img.height*sc); x.fillStyle='#fff';x.font='11px sans-serif'; if(label)x.fillText(label,X,Y+img.height*sc+12); X+=img.width*sc+10; rowH=Math.max(rowH,img.height*sc);}
+for(let i=0;i<8;i++) put(S.human(i,'idle0'),4,PF.Data.ROLES[i].name);
+for(const f of ['walk0','walk1','walk2','walk3']) put(S.human(1,f),4,f);
+for(let i=0;i<3;i++) put(S.pirate(i,'idle0'),4,'pirate'+i);
+put(S.worker('idle0'),4,'worker'); put(S.worker('walk0',true),4,'super');
+X=10;Y+=rowH+30;rowH=0;
+for(const t of ['axe','sickle','pick','sword','holy','hammer','club','sabre']) put(S.tool(t),5,t);
+put(S.tree(1,'leaf',0),4,'tree'); put(S.tree(0,'leaf',1),4,'small'); put(S.tree(1,'pine',2),4,'pine'); put(S.tree(1,'autumn',3),4,'autumn'); put(S.stump(1),4,'stump');
+put(S.rice(1,0),4,'rice'); put(S.rice(0,1),4,'rice s'); put(S.stubble(1),4,'stub'); put(S.crystal(1,0),4,'crys'); put(S.crystal(0,1),4,'crys s'); put(S.rubble(1),4,'rubble');
+X=10;Y+=rowH+30;rowH=0;
+for(const b of ['camp','wood','rice','crystal','shop','site','dockSite']) put(S.building(b),3,b);
+put(S.chest(0),3,'chest');put(S.chest(1),3,'open'); put(S.portal('#ff5a4f',0),3,'portal'); put(S.ship(),3,'ship'); put(S.raft(1),3,'raft');
+X=10;Y+=rowH+30;rowH=0;
+for(const b of ['meadow','forest','farm','rock','snow','sand']) put(S.ground(b,b.length*31),2,b);
+put(S.cliff('meadow'),2,'cliff'); put(S.sea(0),2,'sea'); put(S.cloud(0),4,'cloud');put(S.cloud(1),4);put(S.cloud(2),4);
+for(let k=0;k<8;k++) put(S.icon(k),4);
+put(S.gull(0),4);put(S.crab(0),4);put(S.fin(),4);
+</script></body></html>

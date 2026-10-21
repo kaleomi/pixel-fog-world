@@ -1,0 +1,10 @@
+/*
+  X-Content-Type-Options: nosniff
+/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+/css/*
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/sw.js
+  Cache-Control: no-cache

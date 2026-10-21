@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>小游戏测试</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { position: fixed; left: 0; top: 0; image-rendering: pixelated; }
+  #layer { position: fixed; inset: 0; touch-action: none; }
+  #info { position: fixed; right: 6px; bottom: 6px; color: #fff; font: 12px monospace; background: rgba(0,0,0,.5); padding: 2px 6px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="layer"></div>
+<div id="info"></div>
+<script src="../js/util.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/sprites.js"></script>
+<script src="../js/input.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/entities.js"></script>
+<script src="../js/minigames.js"></script>
+<script>
+  /* 用法：minitest.html?w=danger|lost|number|reversal&two=1 */
+  const qs = new URLSearchParams(location.search);
+  const w = qs.get('w') || 'danger';
+  const two = qs.get('two') === '1';
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const game = { twoP: two, skins: [Number(qs.get('s0') || 0), Number(qs.get('s1') || 4)], cam: { W: innerWidth, H: innerHeight } };
+  PF.Input.twoP = two;
+  PF.Input.init(document.getElementById('layer'));
+  window.result = null;
+  window.doneCalls = 0;
+  window.inst = new PF.Mini[w](game, { world: w, x: 0, y: 0 }, (ok) => {
+    window.result = ok;
+    window.doneCalls++;
+  });
+  let dpr = 1;
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    game.cam.W = innerWidth;
+    game.cam.H = innerHeight;
+    cv.width = Math.round(innerWidth * dpr);
+    cv.height = Math.round(innerHeight * dpr);
+    cv.style.width = innerWidth + 'px';
+    cv.style.height = innerHeight + 'px';
+  }
+  resize();
+  addEventListener('resize', resize);
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    window.inst.update(dt);
+    window.inst.render(ctx, dpr);
+    PF.Input.endFrame();
+    document.getElementById('info').textContent = w + ' ' + window.inst.phase + ' result=' + window.result;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>
