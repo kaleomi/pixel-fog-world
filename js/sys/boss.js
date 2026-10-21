@@ -526,6 +526,19 @@
     update(g) {
       syncBar(g);
     },
+    // 天亮还没打倒：首领撤退（不给奖励），下一个首领夜再来，免得白天一直被他追着打
+    dawn(g) {
+      const R = rt(g);
+      const b = R.boss;
+      if (!b || b.dead) return;
+      b.shells.length = 0;
+      b.dead = true;
+      b.deadT = 0;
+      g.fx.text(b.x, b.y - 250, '首领撤退了', '#ffd0a0', true);
+      g.toast('天亮了，独眼船长骂骂咧咧地撤退了——下一个首领夜他还会再来');
+      R.boss = null;
+      syncBar(g);
+    },
     enemyDie(g, e) {
       const R = rt(g);
       if (!(e instanceof Boss)) return;
@@ -631,7 +644,7 @@
       dot(b.x, b.y, '#ffd23f', 3);
     },
     help() {
-      return '<p><b>海盗首领：</b>每到第 5、10、15……夜，独眼船长会坐着红帆大船亲自登陆。他会横扫身边、往地上开炮（看到红圈快跑开），还会叫来小喽啰；血量低于 40% 时会暴怒。打倒他能得到一个宝箱，之后他会带着更多血量卷土重来。</p>';
+      return '<p><b>海盗首领：</b>每到第 5、10、15……夜，独眼船长会坐着红帆大船亲自登陆。他会横扫身边、往地上开炮（看到红圈快跑开），还会叫来小喽啰；血量低于 40% 时会暴怒。打倒他能得到一个宝箱，之后他会带着更多血量卷土重来；天亮前没打倒，他会先撤退，下个首领夜再来。</p>';
     },
   });
   PF.Boss = { Boss, BossShip, isBossNight };
