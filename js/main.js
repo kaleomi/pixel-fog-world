@@ -61,8 +61,8 @@
       const bob = Math.sin(t * 0.8) * 6;
       ctx.save();
       const portrait = H > W;
-      ctx.translate(0, bob + (portrait ? 330 : 250));
-      const s = portrait ? 0.5 : 0.56;
+      ctx.translate(0, bob + (portrait ? 330 : 190));
+      const s = portrait ? 0.5 : 0.48;
       ctx.scale(s, s);
       cells.forEach((p, i) => {
         const x = p[0] * T - T / 2,
@@ -95,7 +95,7 @@
         const cw = 2 * vw;
         const x = ((c.x * cw + t * c.v) % cw) - vw;
         const y = (c.y * 2 - 1) * vh;
-        const icy = H > W ? 330 : 250;
+        const icy = H > W ? 330 : 190;
         const d = Math.hypot(x, (y - icy) * 1.3);
         if (d < 380) continue;
         const ci = S.cloud(c.k);
