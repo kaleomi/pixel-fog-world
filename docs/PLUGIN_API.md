@@ -65,6 +65,7 @@
 | `drawOverFog(g, ctx, cam)` | 世界 | 迷雾之后、夜晚光照之前 |
 | `lights(g, light)` | 世界 | 夜晚光照：`light(wx, wy, 半径, 强度0~1)` |
 | `drawScreen(g, ctx, dpr, cam)` | 屏幕（CSS 像素，已乘 dpr） | 光照之后（雨、闪电、屏幕特效） |
+| `minimap(g, dot)` | 小地图 | `dot(wx, wy, 颜色, 尺寸px)`，每 0.25 秒重画一次 |
 
 世界单位：一块地 `D.TILE = 352`，美术像素 `D.PX = 4`。`cam.visible(x, y, margin)` 判断是否在视野里，`cam.toScreen(x, y)` 转屏幕坐标。
 画像素图用 `PF.Ent.drawSprite(ctx, canvas, x, footY, {flip, scale, flash})`，阴影 `PF.Ent.shadow(ctx, x, y, w, h)`，血条 `PF.Ent.hpBar(...)`，名牌 `g.namePlate(ctx, x, y, text, color)`。

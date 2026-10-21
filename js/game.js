@@ -393,7 +393,7 @@
         this.addRes(node.type, got, player.x, player.y - 140);
         this.st.gathered[player.idx][node.type] += got;
       }
-      PF.Save.addStat(key, got);
+      if (!this.debug) PF.Save.addStat(key, got);
       this.fire('harvest', node, got, player);
       if (node.hp <= 0) {
         node.hp = 0;
@@ -692,7 +692,7 @@
     }
     onPirateDie(p, src) {
       this.st.kills++;
-      PF.Save.addStat('kills', 1);
+      if (!this.debug) PF.Save.addStat('kills', 1);
       const gold = Math.round((p.K.gold || 0) * this.mods.goldMul);
       if (gold) {
         this.addRes(3, gold, p.x, p.y - 150);
@@ -792,7 +792,7 @@
         const first = !st.worlds[p.world];
         st.worlds[p.world] = true;
         p.cleared = true;
-        PF.Save.meta.stats.worldSet[p.world] = true;
+        if (!this.debug) PF.Save.meta.stats.worldSet[p.world] = true;
         if (first) {
           switch (p.world) {
             case 'danger':
@@ -819,8 +819,10 @@
           this.addRes(3, 15);
           reward = '再次通关：金币 +15';
         }
-        PF.Save.refreshUnlocks();
-        PF.Save.saveMeta();
+        if (!this.debug) {
+          PF.Save.refreshUnlocks();
+          PF.Save.saveMeta();
+        }
       }
       this.mini = null;
       for (const pl of this.players) {

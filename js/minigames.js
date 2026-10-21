@@ -280,18 +280,29 @@
     alive() {
       return this.avs.filter((a) => !a.out);
     }
+    /* 横屏矮屏幕（手机横放）时把 HUD 放在左侧一栏，场地放右边，避免场地被压得太小 */
+    get side() {
+      const W = this.g.cam.W,
+        Hh = this.g.cam.H;
+      return W > Hh * 1.25 && Hh < 640;
+    }
+    get hudW() {
+      return this.side ? U.clamp(this.g.cam.W * 0.27, 190, 270) : this.g.cam.W;
+    }
     /* 竞技场镜头：整块场地居中显示 */
     arenaZoom() {
       const W = this.g.cam.W,
         Hh = this.g.cam.H;
+      if (this.side) return Math.min(W - this.hudW - 14, Hh - 16) / 1000;
       return Math.min(W, Hh - this.hudTop) / 1000;
     }
     arenaXform(ctx, dpr) {
       const W = this.g.cam.W,
         Hh = this.g.cam.H;
       const z = this.arenaZoom();
-      const cx = W / 2,
-        cy = this.hudTop + (Hh - this.hudTop) / 2;
+      const side = this.side;
+      const cx = side ? this.hudW + (W - this.hudW) / 2 : W / 2,
+        cy = side ? Hh / 2 : this.hudTop + (Hh - this.hudTop) / 2;
       const sx = this.shake > 0 ? U.rand(-1, 1) * this.shake : 0;
       const sy = this.shake > 0 ? U.rand(-1, 1) * this.shake : 0;
       ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (cx - (this.AW / 2) * z + sx), dpr * (cy - (this.AH / 2) * z + sy));
@@ -308,10 +319,23 @@
       this.drawWorld(ctx, dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
-      this.drawHUD(ctx, W, Hh);
+      if (this.side && this.drawsArena !== false) {
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        ctx.fillRect(0, 0, this.hudW, Hh);
+      }
+      if (this.side) {
+        // 侧栏：标题单独一行，其余 HUD 整体下移，避免与居中的计时重叠
+        text(ctx, this.Wd.name, 14, 24, 20, this.Wd.color);
+        ctx.translate(0, 30);
+        this._noTitle = true;
+        this.drawHUD(ctx, this.hudW, Hh - 30);
+        this._noTitle = false;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      } else this.drawHUD(ctx, W, Hh);
       this.drawBanner(ctx, W, Hh);
     }
     drawTitle(ctx) {
+      if (this._noTitle) return;
       text(ctx, this.Wd.name, 14, 30, 22, this.Wd.color);
     }
     drawHearts(ctx, x, y) {
@@ -701,6 +725,7 @@
     constructor(g, portal, done) {
       super(g, portal, done, 'lost');
       this.bg = '#050806';
+      this.drawsArena = false;
       this.COLS = 13;
       this.ROWS = 9;
       this.CS = 150;
@@ -1302,6 +1327,8 @@
         ctx.fillStyle = S.mix(D.NUM_COLORS[n], '#000000', 0.55);
         ctx.fillRect(cx - (w * sc) / 2, cy - (h * sc) / 2 + 14 * sc, w * sc, h * sc);
         ctx.drawImage(numTile(n), cx - (w * sc) / 2, cy - (h * sc) / 2, w * sc, h * sc);
+        // 颜色名（色弱或屏幕偏色时也能答对颜色题）
+        if (D.NUM_COLOR_NAMES[n]) text(ctx, D.NUM_COLOR_NAMES[n], cx + (w * sc) / 2 - 28 * sc, cy + (h * sc) / 2 - 30 * sc, 30 * sc, '#ffffff', 'center', 7 * sc);
         if (this.st === 'resolve' && k === this.correct && this.dropped) {
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 8;
@@ -1343,21 +1370,22 @@
       // 题目横幅
       const x0 = 12,
         x1 = W - 12;
-      const fs = W < 520 ? 20 : 26;
+      const side = this.side;
+      const fs = side ? 19 : W < 520 ? 20 : 26;
       ctx.font = FONT(fs);
-      const cdW = 56;
-      const lines = wrapLines(ctx, this.q.text, x1 - x0 - cdW - 28);
+      const cdW = side ? 0 : 56;
+      const lines = wrapLines(ctx, this.q.text, x1 - x0 - (side ? 20 : cdW + 28));
       const lh = fs + 8;
       const y0 = 78,
-        hgt = Math.max(56, lines.length * lh + 18);
+        hgt = side ? lines.length * lh + 82 : Math.max(56, lines.length * lh + 18);
       ctx.fillStyle = 'rgba(20,16,44,0.92)';
       ctx.fillRect(x0, y0, x1 - x0, hgt);
       ctx.strokeStyle = this.Wd.color;
       ctx.lineWidth = 4;
       ctx.strokeRect(x0 + 2, y0 + 2, x1 - x0 - 4, hgt - 4);
       // 倒计时圆
-      const cx = x0 + 12 + cdW / 2,
-        cy = y0 + hgt / 2;
+      const cx = side ? (x0 + x1) / 2 : x0 + 12 + cdW / 2,
+        cy = side ? y0 + 36 : y0 + hgt / 2;
       const left = this.st === 'ask' ? this.cd : 0;
       const tot = this.round <= 2 ? 8 : 6.5;
       ctx.fillStyle = '#05061a';
@@ -1370,6 +1398,10 @@
       ctx.arc(cx, cy, 22, -Math.PI / 2, -Math.PI / 2 + (left / tot) * Math.PI * 2);
       ctx.stroke();
       text(ctx, String(Math.ceil(left)), cx, cy + 1, 24, left <= 3 ? '#ff7a6b' : '#fff', 'center');
+      if (side) {
+        lines.forEach((l, i) => text(ctx, l, (x0 + x1) / 2, y0 + 78 + i * lh + lh / 2 - 4, fs, '#fff', 'center'));
+        return;
+      }
       const tx = (x0 + cdW + 24 + x1) / 2;
       lines.forEach((l, i) => text(ctx, l, tx, y0 + hgt / 2 + (i - (lines.length - 1) / 2) * lh, fs, '#fff', 'center'));
     }

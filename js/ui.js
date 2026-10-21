@@ -306,6 +306,13 @@
       for (const ch of w.chests) if (!ch.opened && w.tiles[ch.tile].unlocked) dot(ch.x, ch.y, '#ffd23f', 4);
       if (w.dock) dot(w.dock.x, w.dock.y, '#fff', 6);
       for (const p of g.pirates) if (!p.dead) dot(p.x, p.y, '#ff2a2a', 4);
+      // 海盗船（闪烁的大红点）
+      if (g.ships.length && Math.floor(performance.now() / 350) % 2 === 0) {
+        const m = (pad * 0.7 * T) / cs;
+        for (const s of g.ships) if (!s.done) dot(U.clamp(s.x, -m, N * T + m), U.clamp(s.y, -m, N * T + m), '#ff2a2a', 7);
+      }
+      // 插件可在小地图上画点：minimap(g, dot) → dot(worldX, worldY, color, size)
+      g.fire('minimap', dot);
       for (const p of g.players) dot(p.x, p.y, p.idx ? '#6fd3ff' : '#fff36b', 6);
       x.strokeStyle = 'rgba(255,255,255,0.8)';
       x.lineWidth = 1;
