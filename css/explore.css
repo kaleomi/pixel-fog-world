@@ -1,1 +1,52 @@
-/* 占位 */
+/* 探索类玩法：天气牌、大陆方向牌、鱼的数量、商船 / 烹饪 / 卖鱼 / 宠物弹窗 */
+
+/* 天气牌（右上角时钟左边） */
+.wx-chip {
+  display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 9px 0 4px; cursor: pointer;
+  background: rgba(28,20,36,.82); border: 2px solid #000; border-radius: 8px; color: #fff;
+  font: 900 14px var(--body); box-shadow: inset 0 -3px 0 rgba(255,255,255,.08);
+}
+.wx-chip img { width: 26px; height: 24px; image-rendering: pixelated; }
+.wx-chip.rain { border-color: #4f9dff; }
+.wx-chip.storm { border-color: #b17cff; color: #e6d4ff; animation: wxpulse 1.6s ease-in-out infinite; }
+.wx-chip:active { transform: translateY(2px); }
+@keyframes wxpulse { 50% { box-shadow: 0 0 0 3px rgba(177,124,255,.35); } }
+
+/* 大陆方向牌（左侧提示列） */
+.lm-compass { display: none; }
+.lm-compass.on {
+  display: flex; align-items: center; gap: 5px; background: rgba(28,20,36,.85); border: 2px solid var(--yellow);
+  border-radius: 6px; padding: 2px 10px 2px 3px; font-weight: 900; font-size: 14px; color: #fff4b0;
+  animation: lmin .4s ease-out;
+}
+.lm-compass img { width: 24px; height: 24px; image-rendering: pixelated; }
+@keyframes lmin { from { opacity: 0; transform: translateX(-12px); } }
+
+/* 资源条里的鱼 */
+.pill.fishpill { display: none; border-color: #2a63b8; }
+.pill.fishpill.on { display: flex; }
+.pill.fishpill img { width: 30px; height: 18px; object-fit: contain; }
+
+/* 弹窗 */
+.row.sold { opacity: .6; }
+.row .pbtns { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.row .pbtns .maxed { text-align: center; }
+.cost.fishc img { width: 24px; height: 14px; object-fit: contain; }
+.cost.fishc i { font-style: normal; color: #8a6a4a; margin: 0 1px; }
+.fishbag { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-weight: 900; font-size: 12.5px; color: var(--ink); }
+.fishbag span { display: inline-flex; align-items: center; gap: 3px; }
+.fishbag span.none { opacity: .45; }
+.fishbag img { width: 26px; height: 14px; object-fit: contain; }
+
+/* 竖屏手机：顶栏太挤，天气牌挪到小地图下方，只显示图标 */
+@media (max-width: 560px) {
+  #weatherBox { right: calc(10px + var(--sr)); top: calc(220px + var(--st)); }
+  .wx-chip { height: 30px; padding: 0 3px; }
+  .wx-chip span { display: none; }
+  .pill.fishpill img { width: 22px; height: 14px; }
+}
+/* 横屏手机 */
+@media (max-height: 500px) {
+  .wx-chip { height: 28px; font-size: 12px; }
+  .wx-chip img { width: 22px; height: 20px; }
+}
