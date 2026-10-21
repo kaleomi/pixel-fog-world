@@ -144,7 +144,11 @@
     },
     dayBanner(d) {
       const el = $('#banner');
-      el.innerHTML = `<div class="big">第 ${d + 1} 天</div><div class="sub">海盗撤退了，抓紧白天发展吧</div>`;
+      const g = this.game;
+      el.innerHTML =
+        g && g.endless
+          ? `<div class="big">撑过第 ${d} 夜</div><div class="sub">今晚的敌人会更多、更强</div>`
+          : `<div class="big">第 ${d + 1} 天</div><div class="sub">海盗撤退了，抓紧白天发展吧</div>`;
       el.classList.remove('on');
       void el.offsetWidth;
       el.classList.add('on');
@@ -581,10 +585,10 @@
       const endNames = ['结局一 · 登上新大陆', '结局二 · 迷雾之子', '结局三 · 迷雾之王'];
       const res = st.gathered;
       let rows = `<div class="stat"><span>用时</span><b>${U.fmtTime(st.elapsed, true)}</b></div>
-        <div class="stat"><span>驱散迷雾</span><b>${w.unlockedCount() - 5} 块</b></div>
+        <div class="stat"><span>驱散迷雾</span><b>${Math.max(0, w.unlockedCount() - (st.baseTiles || 5))} 块</b></div>
         <div class="stat"><span>召唤精灵</span><b>${st.hired} 只</b></div>
         <div class="stat"><span>击退海盗</span><b>${st.kills} 个</b></div>
-        <div class="stat"><span>坚持天数</span><b>${st.day + 1} 天</b></div>
+        <div class="stat"><span>${g.endless ? '撑过' : '坚持天数'}</span><b>${g.endless ? st.day + ' 夜' : st.day + 1 + ' 天'}</b></div>
         <div class="stat"><span>异世界</span><b>${Object.keys(st.worlds).length}/4</b></div>`;
       for (let i = 0; i < g.players.length; i++) {
         rows += `<div class="stat wide"><span>${g.twoP ? (i ? '2P' : '1P') + ' ' : ''}亲手收集</span><b>${this.imgIcon(0)}${res[i][0]} ${this.imgIcon(1)}${res[i][1]} ${this.imgIcon(2)}${res[i][2]}</b></div>`;
